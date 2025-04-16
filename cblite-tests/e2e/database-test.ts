@@ -4,6 +4,7 @@ import { assert, expect } from 'chai';
 import {
   Blob,
   ConcurrencyControl,
+  Database,
   DatabaseConfiguration,
   FileSystem,
   MaintenanceType,
@@ -103,10 +104,13 @@ export class DatabaseTests extends TestCase {
     try {
       const dbPath = await this.database?.getPath();
       const dbName = this.databaseName;
+      const dbUniqueName = this.databaseUniqueName;
       const name = this.database?.getName();
+      const uniqueName = this.database?.getUniqueName();
 
       expect(dbPath).to.include(path);
       expect(name).to.equal(dbName);
+      expect(uniqueName).to.equal(dbUniqueName);
 
       return {
         testName: 'testDatabaseProperties',
@@ -559,6 +563,52 @@ export class DatabaseTests extends TestCase {
     } catch (error) {
       return {
         testName: methodName,
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests creating a new document then saving it to the database
+   * and then opening a new database instance and verifying the document
+   * was saved correctly.
+   *  
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testMultipleInstances(): Promise<ITestResult> {
+    try {
+      let anotherDb: Database | undefined;
+      let anotherCollection: any;
+
+      const doc1a = new MutableDocument("doc1");
+      doc1a.setString("name", "Scott Tiger");
+      await this.defaultCollection.save(doc1a);
+
+      anotherDb = new Database(this.databaseName, this.database.getConfig());
+      const anotherDbUniqueName = await anotherDb.open();
+
+      anotherCollection = await anotherDb.defaultCollection();
+
+      const doc1b = await anotherCollection.document("doc1");
+      console.log("Document retrieved from another database instance:", doc1b);
+
+      expect(doc1b).to.not.be.null;
+      expect(doc1b).to.not.equal(doc1a);
+      expect(doc1b.getId()).to.equal(doc1a.getId());
+      expect(doc1b.toDictionary()).to.deep.equal(doc1a.toDictionary());
+
+      await anotherDb.close();
+      return {
+        testName: 'testMultipleInstances',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testMultipleInstances',
         success: false,
         message: JSON.stringify(error),
         data: undefined,

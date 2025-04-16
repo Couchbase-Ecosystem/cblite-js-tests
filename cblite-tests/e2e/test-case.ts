@@ -19,6 +19,7 @@ export class TestCase {
   database: Database | undefined = undefined;
   otherDatabase: Database | undefined = undefined;
   databaseName: string = "";
+  databaseUniqueName: string = "";
   otherDatabaseName: string = "otherDb";
   scopeName: string = "testScope";
   collectionName: string = "testCollection";
@@ -66,7 +67,7 @@ export class TestCase {
       );
       if (databaseResult instanceof Database) {
         this.database = databaseResult;
-        await this.database?.open();
+        this.databaseUniqueName = await this.database?.open();
         //setup scope and collection
         this.defaultCollection = await this.database?.defaultCollection();
         this.collection = await this.database.createCollection(
@@ -257,8 +258,7 @@ export class TestCase {
           withCollection.name
         }: ${JSON.stringify(error)}`);
       throw new Error(
-        `Can't create collection docs in collection ${
-          withCollection.name
+        `Can't create collection docs in collection ${withCollection.name
         }: ${JSON.stringify(error)}`
       );
     }
