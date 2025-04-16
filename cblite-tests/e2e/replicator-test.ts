@@ -441,12 +441,58 @@ export class ReplicatorTests extends TestCase {
    * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
    */
   async testRemoveDocumentReplicationListener(): Promise<ITestResult> {
-    return {
-      testName: "testRemoveDocumentReplicationListener",
-      success: false,
-      message: "Not implemented",
-      data: undefined,
-    };
+    try {
+      const config = this.createConfig();
+      let isError = false;
+      let didGetDocumentUpdate = false;
+
+      const replicator = await Replicator.create(config);
+      const token = await replicator.addDocumentChangeListener((change) => {
+        // Check to see if the documents were pushed or pulled
+        for (const doc of change.documents) {
+          if (doc.error !== undefined) {
+            isError = true;
+          }
+        }
+        didGetDocumentUpdate = true;
+      });
+
+      // Start the replicator
+      await replicator.start(false);
+      await this.sleep(500);
+      
+      // Clean up
+      await replicator.removeChangeListener(token);
+      await replicator.stop();
+
+      // Validate we got documents replicated
+      const count = await this.defaultCollection.count();
+      expect(count.count).to.be.greaterThan(0);
+
+      // try to remove already removed listener
+      let error;
+      try {
+        await replicator.removeChangeListener(token);
+      } catch (err) {
+        error = err;
+      }
+      
+      expect(error.message).to.contain('No such listener found')
+
+      return {
+        testName: "testDocumentChangeListenerEvent",
+        success: true,
+        message: `success`,
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: "testDocumentChangeListenerEvent",
+        success: false,
+        message: `${error}`,
+        data: undefined,
+      };
+    }
   }
 
   /**
@@ -607,18 +653,63 @@ export class ReplicatorTests extends TestCase {
       data: undefined,
     };
   }
+
   /**
    *
    * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
    */
   async testDocumentReplicationEventWithDeletion(): Promise<ITestResult> {
+    try {
+    const doc1Id = `docForDelete-${Date.now()}`
+    const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+      name: 'docForDelete', 
+      team: 'team1'
+    })
+
+    this.defaultCollection.save(doc1)
+
+    this.defaultCollection.deleteDocument(doc1)
+
+    const replConfig = this.createConfig(
+      ReplicatorType.PUSH, 
+      false,
+      this.defaultCollection,
+    )
+    const replicator = await Replicator.create(replConfig);
+    const replicatedDocuments = [];
+    
+    const token = await replicator.addDocumentChangeListener((change) => {
+      change.documents.forEach(document => replicatedDocuments.push(document))
+    })
+    
+    await replicator.start(false)
+    
+    await this.sleep(500)
+    
+    await replicator.removeChangeListener(token);
+    
+    expect(replicatedDocuments[0].id).to.be.equal(doc1Id)
+    expect(replicatedDocuments[0].flags).contains("DELETED")
+
+    // sync gate validate documents if contain "documentType"
+    // defaultCollection.deleteDocument removes all keys besides metadata
+    expect(replicatedDocuments[0].error.message).contains("documentType")
+
     return {
       testName: "testDocumentReplicationEventWithDeletion",
-      success: false,
-      message: "Not implemented",
+      success: true,
+      message: "success",
       data: undefined,
     };
+  } catch (error) {
+    return {
+            testName: "testDocumentReplicationEventWithDeletion",
+            success: false,
+            message: `${error}`,
+            data: undefined,
+          };
   }
+}
 
   /**
    *
