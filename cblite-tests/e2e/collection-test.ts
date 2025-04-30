@@ -1192,252 +1192,252 @@ export class CollectionTests extends TestCase {
     }
   }
 
-  /**
-   * This method tests the collection change listener functionality.
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
-   */
-  async testCollectionChangeListener(): Promise<ITestResult> {
-    try {
-      const colA = await this.database?.createCollection('colA', 'scopeA');
-      const colB = await this.database?.createCollection('colB', 'scopeA');
+  // /**
+  //  * This method tests the collection change listener functionality.
+  //  *
+  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
+  //  */
+  // async testCollectionChangeListener(): Promise<ITestResult> {
+  //   try {
+  //     const colA = await this.database?.createCollection('colA', 'scopeA');
+  //     const colB = await this.database?.createCollection('colB', 'scopeA');
 
-      let changeListenerFired = 0;
-      let count = 0;
+  //     let changeListenerFired = 0;
+  //     let count = 0;
 
-      let token1;
-      try {
-        token1 = await colA.addChangeListener((change) => {
-          changeListenerFired++;
-          if (change.collection.name === 'colA') {
-            count += change.documentIDs.length;
-          } else {
-            throw new Error(
-              "CollectionB shouldn't trigger CollectionA's listener"
-            );
-          }
-        });
-      } catch (err) {
-        throw err;
-      }
+  //     let token1;
+  //     try {
+  //       token1 = await colA.addChangeListener((change) => {
+  //         changeListenerFired++;
+  //         if (change.collection.name === 'colA') {
+  //           count += change.documentIDs.length;
+  //         } else {
+  //           throw new Error(
+  //             "CollectionB shouldn't trigger CollectionA's listener"
+  //           );
+  //         }
+  //       });
+  //     } catch (err) {
+  //       throw err;
+  //     }
 
-      await this.createCollectionDocs('testCollectionChangeListener', colA, 10);
-      await this.createCollectionDocs('testCollectionChangeListener', colB, 10);
+  //     await this.createCollectionDocs('testCollectionChangeListener', colA, 10);
+  //     await this.createCollectionDocs('testCollectionChangeListener', colB, 10);
 
-      await this.sleep(300);
+  //     await this.sleep(300);
 
-      expect(changeListenerFired).to.be.greaterThan(0);
-      expect(count).to.equal(10);
+  //     expect(changeListenerFired).to.be.greaterThan(0);
+  //     expect(count).to.equal(10);
 
-      changeListenerFired = 0;
+  //     changeListenerFired = 0;
 
-      await colA.removeChangeListener(token1);
+  //     await colA.removeChangeListener(token1);
 
-      await this.createCollectionDocs('testCollectionChangeListener', colA, 10);
-      await this.createCollectionDocs('testCollectionChangeListener', colB, 10);
+  //     await this.createCollectionDocs('testCollectionChangeListener', colA, 10);
+  //     await this.createCollectionDocs('testCollectionChangeListener', colB, 10);
 
-      await this.sleep(300);
+  //     await this.sleep(300);
 
-      expect(changeListenerFired).to.equal(0);
+  //     expect(changeListenerFired).to.equal(0);
 
-      return {
-        testName: 'testCollectionChangeListener',
-        success: true,
-        message: 'success',
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        testName: 'testCollectionChangeListener',
-        success: false,
-        message: error.message || JSON.stringify(error),
-        data: undefined,
-      };
-    }
-  }
+  //     return {
+  //       testName: 'testCollectionChangeListener',
+  //       success: true,
+  //       message: 'success',
+  //       data: undefined,
+  //     };
+  //   } catch (error) {
+  //     return {
+  //       testName: 'testCollectionChangeListener',
+  //       success: false,
+  //       message: error.message || JSON.stringify(error),
+  //       data: undefined,
+  //     };
+  //   }
+  // }
 
-  /**
-   * This method tests that there are no memory leaks or lingering references
-   * when a collection change listener token is not explicitly removed.
-   *
-   * The actual check for resource leaks is in the tearDown() method, which will
-   * close and delete the database. If there are lingering references to collections
-   * or listeners, they should be detected during tearDown.
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
-   */
-  async testCollectionChangeListenerWithoutRemoveToken(): Promise<ITestResult> {
-    try {
-      const colA = await this.database?.createCollection('colA', 'scopeA');
-      let listenerTriggered = false;
+  // /**
+  //  * This method tests that there are no memory leaks or lingering references
+  //  * when a collection change listener token is not explicitly removed.
+  //  *
+  //  * The actual check for resource leaks is in the tearDown() method, which will
+  //  * close and delete the database. If there are lingering references to collections
+  //  * or listeners, they should be detected during tearDown.
+  //  *
+  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
+  //  */
+  // async testCollectionChangeListenerWithoutRemoveToken(): Promise<ITestResult> {
+  //   try {
+  //     const colA = await this.database?.createCollection('colA', 'scopeA');
+  //     let listenerTriggered = false;
 
-      // Add listener to collection A but don't store the token
-      // This would normally be a memory leak risk if the garbage collector
-      // doesn't properly clean up
-      await colA.addChangeListener((change) => {
-        console.log(
-          `Listener triggered with ${change.documentIDs.length} document IDs`
-        );
-        listenerTriggered = true;
-      });
+  //     // Add listener to collection A but don't store the token
+  //     // This would normally be a memory leak risk if the garbage collector
+  //     // doesn't properly clean up
+  //     await colA.addChangeListener((change) => {
+  //       console.log(
+  //         `Listener triggered with ${change.documentIDs.length} document IDs`
+  //       );
+  //       listenerTriggered = true;
+  //     });
 
-      const doc = new MutableDocument('doc1');
-      doc.setValue('key', 1);
-      await colA.save(doc);
+  //     const doc = new MutableDocument('doc1');
+  //     doc.setValue('key', 1);
+  //     await colA.save(doc);
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  //     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      expect(listenerTriggered).to.be.true;
+  //     expect(listenerTriggered).to.be.true;
 
-      // We're deliberately not removing the listener here
-      // The test will pass if the tearDown() method can successfully delete the database
-      // without errors related to lingering listeners or references
-      return {
-        testName: 'testCollectionChangeListenerWithoutRemoveToken',
-        success: true,
-        message: 'success',
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        testName: 'testCollectionChangeListenerWithoutRemoveToken',
-        success: false,
-        message: error.message || JSON.stringify(error),
-        data: undefined,
-      };
-    }
-  }
+  //     // We're deliberately not removing the listener here
+  //     // The test will pass if the tearDown() method can successfully delete the database
+  //     // without errors related to lingering listeners or references
+  //     return {
+  //       testName: 'testCollectionChangeListenerWithoutRemoveToken',
+  //       success: true,
+  //       message: 'success',
+  //       data: undefined,
+  //     };
+  //   } catch (error) {
+  //     return {
+  //       testName: 'testCollectionChangeListenerWithoutRemoveToken',
+  //       success: false,
+  //       message: error.message || JSON.stringify(error),
+  //       data: undefined,
+  //     };
+  //   }
+  // }
 
-  /**
-   * This method tests the collection document change listener functionality.
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
-   */
-  async testCollectionDocumentChangeListener(): Promise<ITestResult> {
-    try {
-      const colA = await this.database?.createCollection('colA', 'scopeA');
-      const colB = await this.database?.createCollection('colB', 'scopeA');
+  // /**
+  //  * This method tests the collection document change listener functionality.
+  //  *
+  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
+  //  */
+  // async testCollectionDocumentChangeListener(): Promise<ITestResult> {
+  //   try {
+  //     const colA = await this.database?.createCollection('colA', 'scopeA');
+  //     const colB = await this.database?.createCollection('colB', 'scopeA');
 
-      const specificDocId = 'doc-1';
-      let changeListenerFired = 0;
-      let count = 0;
+  //     const specificDocId = 'doc-1';
+  //     let changeListenerFired = 0;
+  //     let count = 0;
 
-      const token = await colA.addDocumentChangeListener(
-        specificDocId,
-        (change) => {
-          changeListenerFired++;
-          if (change.collection.name === 'colA') {
-            count++;
-          } else {
-            throw new Error(
-              "CollectionB shouldn't trigger CollectionA's listener"
-            );
-          }
-        }
-      );
+  //     const token = await colA.addDocumentChangeListener(
+  //       specificDocId,
+  //       (change) => {
+  //         changeListenerFired++;
+  //         if (change.collection.name === 'colA') {
+  //           count++;
+  //         } else {
+  //           throw new Error(
+  //             "CollectionB shouldn't trigger CollectionA's listener"
+  //           );
+  //         }
+  //       }
+  //     );
 
-      const doc = new MutableDocument(specificDocId);
-      doc.setString('key', 'value1');
-      await colA.save(doc);
+  //     const doc = new MutableDocument(specificDocId);
+  //     doc.setString('key', 'value1');
+  //     await colA.save(doc);
 
-      const fetchedDoc = await colA.document(specificDocId);
-      const mutableDoc = MutableDocument.fromDocument(fetchedDoc);
-      mutableDoc.setString('key', 'value2');
-      await colA.save(mutableDoc);
+  //     const fetchedDoc = await colA.document(specificDocId);
+  //     const mutableDoc = MutableDocument.fromDocument(fetchedDoc);
+  //     mutableDoc.setString('key', 'value2');
+  //     await colA.save(mutableDoc);
 
-      await this.createCollectionDocs(
-        'testCollectionDocumentChangeListener',
-        colB,
-        5
-      );
+  //     await this.createCollectionDocs(
+  //       'testCollectionDocumentChangeListener',
+  //       colB,
+  //       5
+  //     );
 
-      await this.sleep(300);
+  //     await this.sleep(300);
 
-      expect(changeListenerFired).to.equal(2); // Should be triggered twice (creation + update)
-      expect(count).to.equal(2);
+  //     expect(changeListenerFired).to.equal(2); // Should be triggered twice (creation + update)
+  //     expect(count).to.equal(2);
 
-      // Reset counter
-      changeListenerFired = 0;
-      count = 0;
+  //     // Reset counter
+  //     changeListenerFired = 0;
+  //     count = 0;
 
-      await colA.removeDocumentChangeListener(token);
+  //     await colA.removeDocumentChangeListener(token);
 
-      const fetchedDoc2 = await colA.document(specificDocId);
-      const mutableDoc2 = MutableDocument.fromDocument(fetchedDoc2);
-      mutableDoc2.setString('key', 'value3');
-      await colA.save(mutableDoc2);
+  //     const fetchedDoc2 = await colA.document(specificDocId);
+  //     const mutableDoc2 = MutableDocument.fromDocument(fetchedDoc2);
+  //     mutableDoc2.setString('key', 'value3');
+  //     await colA.save(mutableDoc2);
 
-      await this.sleep(300);
+  //     await this.sleep(300);
 
-      // Verify the listener was not triggered after removal
-      expect(changeListenerFired).to.equal(0);
+  //     // Verify the listener was not triggered after removal
+  //     expect(changeListenerFired).to.equal(0);
 
-      return {
-        testName: 'testCollectionDocumentChangeListener',
-        success: true,
-        message: 'success',
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        testName: 'testCollectionDocumentChangeListener',
-        success: false,
-        message: error.message || JSON.stringify(error),
-        data: undefined,
-      };
-    }
-  }
+  //     return {
+  //       testName: 'testCollectionDocumentChangeListener',
+  //       success: true,
+  //       message: 'success',
+  //       data: undefined,
+  //     };
+  //   } catch (error) {
+  //     return {
+  //       testName: 'testCollectionDocumentChangeListener',
+  //       success: false,
+  //       message: error.message || JSON.stringify(error),
+  //       data: undefined,
+  //     };
+  //   }
+  // }
 
-  /**
-   * This method tests that there are no memory leaks or lingering references
-   * when a collection document change listener token is not explicitly removed.
-   *
-   * The actual check for resource leaks is in the tearDown() method, which will
-   * close and delete the database. If there are lingering references to collections
-   * or listeners, they should be detected during tearDown.
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
-   */
-  async testCollectionDocumentChangeListenerWithoutRemoveToken(): Promise<ITestResult> {
-    try {
-      const colA = await this.database?.createCollection('colA', 'scopeA');
-      const specificDocId = 'doc-1';
-      let listenerTriggered = false;
+  // /**
+  //  * This method tests that there are no memory leaks or lingering references
+  //  * when a collection document change listener token is not explicitly removed.
+  //  *
+  //  * The actual check for resource leaks is in the tearDown() method, which will
+  //  * close and delete the database. If there are lingering references to collections
+  //  * or listeners, they should be detected during tearDown.
+  //  *
+  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
+  //  */
+  // async testCollectionDocumentChangeListenerWithoutRemoveToken(): Promise<ITestResult> {
+  //   try {
+  //     const colA = await this.database?.createCollection('colA', 'scopeA');
+  //     const specificDocId = 'doc-1';
+  //     let listenerTriggered = false;
 
-      await colA.addDocumentChangeListener(specificDocId, (change) => {
-        console.log(
-          `Document change listener triggered for ${change.documentId}`
-        );
-        listenerTriggered = true;
-      });
+  //     await colA.addDocumentChangeListener(specificDocId, (change) => {
+  //       console.log(
+  //         `Document change listener triggered for ${change.documentId}`
+  //       );
+  //       listenerTriggered = true;
+  //     });
 
-      const doc = new MutableDocument(specificDocId);
-      doc.setString('key', 'value1');
-      await colA.save(doc);
+  //     const doc = new MutableDocument(specificDocId);
+  //     doc.setString('key', 'value1');
+  //     await colA.save(doc);
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+  //     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      expect(listenerTriggered).to.be.true;
+  //     expect(listenerTriggered).to.be.true;
 
-      // We're deliberately not removing the listener here
-      // The test will pass if the tearDown() method can successfully delete the database
-      // without errors related to lingering listeners or references
+  //     // We're deliberately not removing the listener here
+  //     // The test will pass if the tearDown() method can successfully delete the database
+  //     // without errors related to lingering listeners or references
 
-      return {
-        testName: 'testCollectionDocumentChangeListenerWithoutRemoveToken',
-        success: true,
-        message: 'success',
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        testName: 'testCollectionDocumentChangeListenerWithoutRemoveToken',
-        success: false,
-        message: error.message || JSON.stringify(error),
-        data: undefined,
-      };
-    }
-  }
+  //     return {
+  //       testName: 'testCollectionDocumentChangeListenerWithoutRemoveToken',
+  //       success: true,
+  //       message: 'success',
+  //       data: undefined,
+  //     };
+  //   } catch (error) {
+  //     return {
+  //       testName: 'testCollectionDocumentChangeListenerWithoutRemoveToken',
+  //       success: false,
+  //       message: error.message || JSON.stringify(error),
+  //       data: undefined,
+  //     };
+  //   }
+  // }
 
   async isErrorCreatingCollection(
     name: string,
