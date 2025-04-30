@@ -385,14 +385,14 @@ export class DatabaseTests extends TestCase {
     };
   }
 
-  async testCopyingDatabase(): Promise<ITestResult> {
-    return {
-      testName: 'testCopyingDatabase',
-      success: false,
-      message: 'Not implemented',
-      data: undefined,
-    };
-  }
+  // async testCopyingDatabase(): Promise<ITestResult> {
+  //   return {
+  //     testName: 'testCopyingDatabase',
+  //     success: false,
+  //     message: 'Not implemented',
+  //     data: undefined,
+  //   };
+  // }
 
   /**
    * This method tests running compact on a database
