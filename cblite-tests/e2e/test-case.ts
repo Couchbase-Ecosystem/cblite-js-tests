@@ -28,6 +28,7 @@ export class TestCase {
   scope: Scope | undefined = undefined;
   directory: string | undefined = undefined;
   dataSource: string = this.scopeName + "." + this.collectionName;
+  platform = this._engine.platform;
 
   private TEST_DOC_TAG_KEY: string = "TEST_TAG";
   private TEST_DOC_SORT_KEY: string = "TEST_SORT_ASC";
