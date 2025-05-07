@@ -280,7 +280,9 @@ export class TestCase {
     mDoc.setString("stringNull", null);
     mDoc.setString("stringPunk", "Jett");
     mDoc.setDate("dateNull", null);
-    mDoc.setDate("dateCB", new Date("2020-01-01T00:00:00.000Z"));
+    mDoc.setDate("dateUTC", new Date("2020-01-01T00:00:00.000Z"));
+    mDoc.setDate("dateOffset", new Date("2020-01-01T00:00:00.000+02:00"));
+    mDoc.setDate("dateNoTimeZone", new Date("2020-01-01T00:00:00.000"));
     mDoc.setBlob("blobNull", null);
     mDoc.setString(this.TEST_DOC_TAG_KEY, tag);
     mDoc.setLong(this.TEST_DOC_SORT_KEY, id);
