@@ -376,13 +376,13 @@ export class QueryTests extends TestCase {
       return {
         testName: "testSelectAllResultKey",
         success: false,
-        message: JSON.stringify(error),
+        message: JSON.stringify(error), 
         data: undefined,
       };
     }
   }
 
-  async testQueryDateParameter(): Promise<ITestResult> {
+  async testQueryUTCDateParameter(): Promise<ITestResult> {
     try {
       const col = await this.database.createCollection("people", "test");
       //add documents
@@ -390,20 +390,77 @@ export class QueryTests extends TestCase {
       const date = new Date("2020-01-01T00:00:00.000Z");
       //test null value
       const valueQuery = this.database.createQuery(
-        "SELECT * FROM test.people WHERE dateCB = $param limit 1"
+        "SELECT * FROM test.people WHERE dateUTC = $param limit 1"
       );
       const parameters = new Parameters();
       parameters.setDate("param", date);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        "dateCB",
-        "2020-01-01T00:00:00.000Z",
-        "testQueryDateParameter"
+        "dateUTC",
+        date.toISOString(),
+        "testQueryUTCDateParameter"
       );
     } catch (error) {
       return {
-        testName: "testQueryDateParameter",
+        testName: "testQueryUTCDateParameter",
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  async testQueryOffsetDateParameter(): Promise<ITestResult> {
+    try {
+      const col = await this.database.createCollection("people", "test");
+      //add documents
+      await this.loadDocumentsIntoCollection(20, col);
+      const date = new Date("2020-01-01T00:00:00.000+02:00");
+      //test null value
+      const valueQuery = this.database.createQuery(
+        "SELECT * FROM test.people WHERE dateOffset = $param limit 1"
+      );
+      const parameters = new Parameters();
+      parameters.setDate("param", date);
+      valueQuery.parameters = parameters;
+      return await this.runQueryParameterTest(
+        valueQuery,
+        "dateOffset",
+        date.toISOString(),
+        "testQueryOffsetDateParameter"
+      );
+    } catch (error) {
+      return {
+        testName: "testQueryOffsetDateParameter",
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+  async testQueryNoTimeZoneDateParameter(): Promise<ITestResult> {
+    try {
+      const col = await this.database.createCollection("people", "test");
+      //add documents
+      await this.loadDocumentsIntoCollection(20, col);
+      const date = new Date("2020-01-01T00:00:00.000");
+      //test null value
+      const valueQuery = this.database.createQuery(
+        "SELECT * FROM test.people WHERE dateNoTimeZone = $param limit 1"
+      );
+      const parameters = new Parameters();
+      parameters.setDate("param", date);
+      valueQuery.parameters = parameters;
+      return await this.runQueryParameterTest(
+        valueQuery,
+        "dateNoTimeZone",
+        date.toISOString(),
+        "testQueryNoTimeZoneDateParameter"
+      );
+    } catch (error) {
+      return {
+        testName: "testQueryNoTimeZoneDateParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
