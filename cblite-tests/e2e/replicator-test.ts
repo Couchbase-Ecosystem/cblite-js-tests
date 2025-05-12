@@ -9,15 +9,15 @@ import {
   URLEndpoint,
   CollectionConfig,
   Collection,
+  DatabaseConfiguration,
+  Database,
+  MutableDocument,
 } from "cblite-js";
 import { expect } from "chai";
 
 /**
- * ReplicatorTests - reminder all test cases must start with 'test' in the name of the method or they will not run
- * */
-
-/**
- * ReplicatorTests - needs running Sync Gate to pass, visit README.md for more information
+ * ReplicatorTests - needs running Sync Gate to pass, visit README.md for more information.
+ * Reminder all test cases must start with 'test' in the name of the method or they will not run
  * */
 export class ReplicatorTests extends TestCase {
   constructor() {
@@ -90,10 +90,10 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-   */
+   /**
+    *
+    * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+    */
   async testReplicatorConfigDefaultValues(): Promise<ITestResult> {
     const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
     const config = new ReplicatorConfiguration(target);
@@ -279,7 +279,6 @@ export class ReplicatorTests extends TestCase {
 
           if (activityLevel === ReplicatorActivityLevel.STOPPED) {
             const error = status.getError();
-            console.log({ activityLevel })
             if (error) {
               isError = true;
               reject();
@@ -514,151 +513,145 @@ export class ReplicatorTests extends TestCase {
   //   };
   // }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testDocumentReplicationEventWithPullConflict(): Promise<ITestResult> {
-    // try {
-    //   const docId = `doc-conflict-pull-${Date.now()}`;
-    //   const localDoc = this.createDocument(docId);
-    //   localDoc.setString("species", "Tiger");
-    //   localDoc.setString("pattern", "Star");
-    //   localDoc.setString("documentType", "project"); // Required by sync function
-    //   localDoc.setString("team", "team1");
-    //   await this.defaultCollection.save(localDoc);
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testDocumentReplicationEventWithPullConflict(): Promise<ITestResult> {
+    try {
+      const docId = `doc-conflict-pull-${Date.now()}`;
+      const localDoc = this.createDocument(docId);
+      localDoc.setString("species", "Tiger");
+      localDoc.setString("pattern", "Star");
+      localDoc.setString("documentType", "project"); // Required by sync function
+      localDoc.setString("team", "team1");
+      await this.defaultCollection.save(localDoc);
 
-    //   const target = new URLEndpoint(SYNC_GATEWAY_URL);
-    //   const auth = new BasicAuthenticator("demo@example.com", "P@ssw0rd12");
+      const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
+      const auth = new BasicAuthenticator("demo@example.com", "P@ssw0rd12");
 
-    //   // Push the document to Sync Gateway
-    //   let config = new ReplicatorConfiguration(target);
-    //   config.addCollection(this.defaultCollection);
-    //   config.setReplicatorType(ReplicatorType.PUSH);
-    //   config.setAuthenticator(auth);
+      // Push the document to Sync Gateway
+      let config = new ReplicatorConfiguration(target);
+      config.addCollection(this.defaultCollection);
+      config.setReplicatorType(ReplicatorType.PUSH);
+      config.setAuthenticator(auth);
 
-    //   await this.runReplication(config);
+      await this.runReplication(config);
 
-    //   // Create a separate database to modify the document on Sync Gateway
-    //   const dbConfig = new DatabaseConfiguration();
-    //   dbConfig.setDirectory(this.directory);
-    //   const otherDb = new Database(this.otherDatabaseName, dbConfig);
-    //   await otherDb.open();
+      // Create a separate database to modify the document on Sync Gateway
+      const dbConfig = new DatabaseConfiguration();
+      dbConfig.setDirectory(this.directory);
+      const otherDb = new Database(this.otherDatabaseName, dbConfig);
+      await otherDb.open();
 
-    //   if (!(otherDb instanceof Database)) {
-    //     return {
-    //       testName: 'testEqualityDifferentDB',
-    //       success: false,
-    //       message: "otherDb isn't a database instance",
-    //       data: undefined,
-    //     };
-    //   }
-    //   const otherCollection = await otherDb.defaultCollection();
+      if (!(otherDb instanceof Database)) {
+        return {
+          testName: 'testEqualityDifferentDB',
+          success: false,
+          message: "otherDb isn't a database instance",
+          data: undefined,
+        };
+      }
+      const otherCollection = await otherDb.defaultCollection();
 
-    //   // Pull the document to the other database
-    //   config = new ReplicatorConfiguration(target);
-    //   config.addCollection(otherCollection);
-    //   config.setReplicatorType(ReplicatorType.PULL);
-    //   config.setAuthenticator(auth);
+      // Pull the document to the other database
+      config = new ReplicatorConfiguration(target);
+      config.addCollection(otherCollection);
+      config.setReplicatorType(ReplicatorType.PULL);
+      config.setAuthenticator(auth);
 
-    //   await this.runReplication(config);
+      await this.runReplication(config);
 
-    //   // Modify the document in the other database
-    //   const otherDoc = await otherCollection.document(docId);
-    //   const mutableOtherDoc = MutableDocument.fromDocument(otherDoc);
-    //   mutableOtherDoc.setString("pattern", "Striped"); // Different from "Star"
-    //   await otherCollection.save(mutableOtherDoc);
+      // Modify the document in the other database
+      const otherDoc = await otherCollection.document(docId);
+      const mutableOtherDoc = MutableDocument.fromDocument(otherDoc);
+      mutableOtherDoc.setString("pattern", "Striped"); // Different from "Star"
+      await otherCollection.save(mutableOtherDoc);
 
-    //   // Push the modified document back to Sync Gateway
-    //   config = new ReplicatorConfiguration(target);
-    //   config.addCollection(otherCollection);
-    //   config.setReplicatorType(ReplicatorType.PUSH);
-    //   config.setAuthenticator(auth);
+      // Push the modified document back to Sync Gateway
+      config = new ReplicatorConfiguration(target);
+      config.addCollection(otherCollection);
+      config.setReplicatorType(ReplicatorType.PUSH);
+      config.setAuthenticator(auth);
 
-    //   await this.runReplication(config);
+      await this.runReplication(config);
 
-    //   // Now we have a conflict: local document is "Star", Sync Gateway has "Striped"
+      // Now we have a conflict: local document is "Star", Sync Gateway has "Striped"
 
-    //   // Try to pull, which should merge with local version
-    //   config = new ReplicatorConfiguration(target);
-    //   config.addCollection(this.defaultCollection);
-    //   config.setReplicatorType(ReplicatorType.PULL);
-    //   config.setAuthenticator(auth);
+      // Try to pull, which should merge with local version
+      config = new ReplicatorConfiguration(target);
+      config.addCollection(this.defaultCollection);
+      config.setReplicatorType(ReplicatorType.PULL);
+      config.setAuthenticator(auth);
 
-    //   const replicator = await Replicator.create(config);
+      const replicator = await Replicator.create(config);
 
-    //   // Track the replication events
-    //   let conflictDoc: any = null;
+      // Track the replication events
+      let conflictDoc: any = null;
 
-    //   const docChangePromise = new Promise<void>((resolve) => {
-    //     replicator.addDocumentChangeListener((change) => {
-    //       if (!change.isPush) {
-    //         for (const doc of change.documents) {
-    //           if (doc.id === docId) {
-    //             conflictDoc = doc;
-    //             resolve();
-    //           }
-    //         }
-    //       }
-    //     });
-    //   });
+      const docChangePromise = new Promise<void>((resolve) => {
+        replicator.addDocumentChangeListener((change) => {
+          if (!change.isPush) {
+            for (const doc of change.documents) {
+              if (doc.id === docId) {
+                conflictDoc = doc;
+                resolve();
+              }
+            }
+          }
+        });
+      });
 
-    //   // Start replication and wait for the document change event
-    //   await replicator.start(false);
+      // Start replication and wait for the document change event
+      await replicator.start(false);
 
-    //   // Wait for the document change event or timeout
-    //   const timeoutPromise = new Promise<void>((_, reject) => {
-    //     setTimeout(() => reject(new Error("Timeout waiting for document change event")), 5000);
-    //   });
+      // Wait for the document change event or timeout
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout waiting for document change event")), 5000);
+      });
 
-    //   try {
-    //     await Promise.race([docChangePromise, timeoutPromise]);
-    //   } catch (e) {
-    //     // If we timeout, stop replication and throw
-    //     await replicator.stop();
-    //     throw e;
-    //   }
+      try {
+        await Promise.race([docChangePromise, timeoutPromise]);
+      } catch (e) {
+        // If we timeout, stop replication and throw
+        await replicator.stop();
+        throw e;
+      }
 
-    //   // Stop replication
-    //   await replicator.stop();
+      // Stop replication
+      await replicator.stop();
 
-    //   // Verify the document replication event
-    //   expect(conflictDoc).to.not.be.null;
-    //   expect(conflictDoc.id).to.equal(docId);
-    //   expect(conflictDoc.error).to.be.undefined; // Pull conflict doesn't report an error
+      // Verify the document replication event
+      expect(conflictDoc).to.not.be.null;
+      expect(conflictDoc.id).to.equal(docId);
+      expect(conflictDoc.error).to.be.undefined; // Pull conflict doesn't report an error
 
-    //   // Check that the document was updated with the remote version
-    //   const updatedDoc = await this.defaultCollection.document(docId);
-    //   expect(updatedDoc.getString("pattern")).to.equal("Striped");
+      // Check that the document was updated with the remote version
+      const updatedDoc = await this.defaultCollection.document(docId);
+      expect(updatedDoc.getString("pattern")).to.equal("Striped");
 
-    //   return {
-    //     testName: "testDocumentReplicationEventWithPullConflict",
-    //     success: true,
-    //     message: "Successfully verified document replication event with pull conflict",
-    //     data: undefined,
-    //   };
-    // } catch (error) {
-    //   return {
-    //     testName: "testDocumentReplicationEventWithPullConflict",
-    //     success: false,
-    //     message: `${error}`,
-    //     data: error.stack || error.toString(),
-    //   };
-    // } finally {
-    //   // Clean up the other database
-    //   if (this.otherDatabase) {
-    //     await this.otherDatabase.close();
-    //     await this.deleteDatabase(this.otherDatabase);
-    //     this.otherDatabase = undefined;
-    //   }
-    // }
-  //   return {
-  //     testName: "testDocumentReplicationEventWithPullConflict",
-  //     success: false,
-  //     message: "Conflict resolver not implemented",
-  //     data: undefined,
-  //   };
-  // }
+      return {
+        testName: "testDocumentReplicationEventWithPullConflict",
+        success: true,
+        message: "Successfully verified document replication event with pull conflict",
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: "testDocumentReplicationEventWithPullConflict",
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    } finally {
+      // Clean up the other database
+      if (this.otherDatabase) {
+        await this.otherDatabase.close();
+        await this.deleteDatabase(this.otherDatabase);
+        this.otherDatabase = undefined;
+      }
+    }
+  }
 
   /**
    *
@@ -942,134 +935,135 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testCopyingReplicatorConfiguration(): Promise<ITestResult> {
-  //   try {
-  //     // Create a target for configuration
-  //     const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testCopyingReplicatorConfiguration(): Promise<ITestResult> {
+    try {
+      // Create a target for configuration
+      const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
 
-  //     // Create configuration with non-default values
-  //     const config = new ReplicatorConfiguration(target);
+      // Create configuration with non-default values
+      const config = new ReplicatorConfiguration(target);
 
-  //     // Set authentication
-  //     const basic = new BasicAuthenticator("abcd", "1234");
-  //     config.setAuthenticator(basic);
+      // Set authentication
+      const basic = new BasicAuthenticator("abcd", "1234");
+      config.setAuthenticator(basic);
 
-  //     // Set non-default values for all configurable properties
-  //     config.setContinuous(true);
-  //     config.setHeaders({ "a": "aa", "b": "bb" });
-  //     config.setReplicatorType(ReplicatorType.PULL);
-  //     config.setHeartbeat(211);
-  //     config.setMaxAttempts(223);
-  //     config.setMaxAttemptWaitTime(227);
-  //     config.setAcceptOnlySelfSignedCerts(true);
-  //     config.setAllowReplicatingInBackground(true);
-  //     config.setAutoPurgeEnabled(false);
-  //     config.setAcceptParentDomainCookies(true);
+      // Set non-default values for all configurable properties
+      config.setContinuous(true);
+      config.setHeaders({ "a": "aa", "b": "bb" });
+      config.setReplicatorType(ReplicatorType.PULL);
+      config.setHeartbeat(211);
+      config.setMaxAttempts(223);
+      config.setMaxAttemptWaitTime(227);
+      config.setAcceptOnlySelfSignedCerts(true);
+      config.setAllowReplicatingInBackground(true);
+      config.setAutoPurgeEnabled(false);
+      config.setAcceptParentDomainCookies(true);
 
-  //     // Set pinnedServerCertificate
-  //     const certificateData = "MOCK_CERTIFICATE_DATA";
-  //     config.setPinnedServerCertificate(certificateData);
+      // Set pinnedServerCertificate
+      const certificateData = "MOCK_CERTIFICATE_DATA";
+      config.setPinnedServerCertificate(certificateData);
 
-  //     // Create a collection configuration with channels and document IDs
-  //     const colConfig = new CollectionConfig(["c1", "c2"], ["d1", "d2"]);
+      // Create a collection configuration with channels and document IDs
+      const colConfig = new CollectionConfig(["c1", "c2"], ["d1", "d2"]);
 
-  //     // Add collection with config
-  //     config.addCollection(this.defaultCollection);
+      // Add collection with config
+      config.addCollection(this.defaultCollection);
 
-  //     // Store original values for later comparison
-  //     const originalContinuous = config.getContinuous();
-  //     const originalReplicatorType = config.getReplicatorType();
-  //     const originalHeartbeat = config.getHeartbeat();
-  //     const originalMaxAttempts = config.getMaxAttempts();
-  //     const originalMaxAttemptWaitTime = config.getMaxAttemptWaitTime();
-  //     const originalSelfSignedCerts = config.getAcceptOnlySelfSignedCerts();
-  //     const originalBackgroundReplication = config.getAllowReplicatingInBackground();
-  //     const originalAutoPurge = config.getAutoPurgeEnabled();
-  //     const originalParentDomainCookies = config.getAcceptParentDomainCookies();
-  //     const originalCertificate = config.getPinnedServerCertificate();
-  //     const originalHeaders = JSON.stringify(config.getHeaders());
+      // Store original values for later comparison
+      const originalContinuous = config.getContinuous();
+      const originalReplicatorType = config.getReplicatorType();
+      const originalHeartbeat = config.getHeartbeat();
+      const originalMaxAttempts = config.getMaxAttempts();
+      const originalMaxAttemptWaitTime = config.getMaxAttemptWaitTime();
+      const originalSelfSignedCerts = config.getAcceptOnlySelfSignedCerts();
+      const originalBackgroundReplication = config.getAllowReplicatingInBackground();
+      const originalAutoPurge = config.getAutoPurgeEnabled();
+      const originalParentDomainCookies = config.getAcceptParentDomainCookies();
+      const originalCertificate = config.getPinnedServerCertificate();
+      const originalHeaders = JSON.stringify(config.getHeaders());
 
-  //     const originalAuth = config.getAuthenticator() as BasicAuthenticator;
-  //     let originalUsername = null;
-  //     let originalPassword = null;
-  //     if (originalAuth && originalAuth.toJson) {
-  //       originalUsername = originalAuth.toJson().username;
-  //       originalPassword = originalAuth.toJson().password;
-  //     }
+      const originalAuth = config.getAuthenticator() as BasicAuthenticator;
+      let originalUsername = null;
+      let originalPassword = null;
+      if (originalAuth && originalAuth.toJson) {
+        originalUsername = originalAuth.toJson().username;
+        originalPassword = originalAuth.toJson().password;
+      }
 
-  //     // Create a replicator with the configuration
-  //     const replicator = await Replicator.create(config);
+      // Create a replicator with the configuration
+      const replicator = await Replicator.create(config);
+      await replicator.start(false);
 
-  //     // Now modify the original configuration
-  //     config.setContinuous(false);
-  //     config.setAuthenticator(null);
-  //     config.setHeaders(null);
-  //     config.setReplicatorType(ReplicatorType.PUSH);
-  //     config.setHeartbeat(11);
-  //     config.setMaxAttempts(13);
-  //     config.setMaxAttemptWaitTime(17);
-  //     config.setPinnedServerCertificate(null);
-  //     config.setAcceptOnlySelfSignedCerts(false);
-  //     config.setAllowReplicatingInBackground(false);
-  //     config.setAutoPurgeEnabled(true);
-  //     config.setAcceptParentDomainCookies(false);
+      // Now modify the original configuration
+      config.setContinuous(false);
+      config.setAuthenticator(null);
+      config.setHeaders(null);
+      config.setReplicatorType(ReplicatorType.PUSH);
+      config.setHeartbeat(11);
+      config.setMaxAttempts(13);
+      config.setMaxAttemptWaitTime(17);
+      config.setPinnedServerCertificate(null);
+      config.setAcceptOnlySelfSignedCerts(false);
+      config.setAllowReplicatingInBackground(false);
+      config.setAutoPurgeEnabled(true);
+      config.setAcceptParentDomainCookies(false);
 
-  //     // Remove the collection and add it back with a new empty config
-  //     config.removeCollection(this.defaultCollection);
-  //     config.addCollection(this.defaultCollection);
+      // Remove the collection and add it back with a new empty config
+      config.removeCollection(this.defaultCollection);
+      config.addCollection(this.defaultCollection);
 
-  //     // Get the configuration from the replicator
-  //     const replicatorConfig = replicator.getConfiguration();
+      // Get the configuration from the replicator
+      const replicatorConfig = replicator.getConfiguration();
 
-  //     // Verify the replicator's configuration still has the original values
-  //     expect(replicatorConfig.getContinuous()).to.equal(originalContinuous);
-  //     expect(replicatorConfig.getReplicatorType()).to.equal(originalReplicatorType);
-  //     expect(replicatorConfig.getHeartbeat()).to.equal(originalHeartbeat);
-  //     expect(replicatorConfig.getMaxAttempts()).to.equal(originalMaxAttempts);
-  //     expect(replicatorConfig.getMaxAttemptWaitTime()).to.equal(originalMaxAttemptWaitTime);
-  //     expect(replicatorConfig.getAcceptOnlySelfSignedCerts()).to.equal(originalSelfSignedCerts);
-  //     expect(replicatorConfig.getAllowReplicatingInBackground()).to.equal(originalBackgroundReplication);
-  //     expect(replicatorConfig.getAutoPurgeEnabled()).to.equal(originalAutoPurge);
-  //     expect(replicatorConfig.getAcceptParentDomainCookies()).to.equal(originalParentDomainCookies);
-  //     expect(replicatorConfig.getPinnedServerCertificate()).to.equal(originalCertificate);
-  //     expect(JSON.stringify(replicatorConfig.getHeaders())).to.equal(originalHeaders);
+      // Verify the replicator's configuration still has the original values
+      expect(replicatorConfig.getContinuous()).to.equal(originalContinuous);
+      expect(replicatorConfig.getReplicatorType()).to.equal(originalReplicatorType);
+      expect(replicatorConfig.getHeartbeat()).to.equal(originalHeartbeat);
+      expect(replicatorConfig.getMaxAttempts()).to.equal(originalMaxAttempts);
+      expect(replicatorConfig.getMaxAttemptWaitTime()).to.equal(originalMaxAttemptWaitTime);
+      expect(replicatorConfig.getAcceptOnlySelfSignedCerts()).to.equal(originalSelfSignedCerts);
+      expect(replicatorConfig.getAllowReplicatingInBackground()).to.equal(originalBackgroundReplication);
+      expect(replicatorConfig.getAutoPurgeEnabled()).to.equal(originalAutoPurge);
+      expect(replicatorConfig.getAcceptParentDomainCookies()).to.equal(originalParentDomainCookies);
+      expect(replicatorConfig.getPinnedServerCertificate()).to.equal(originalCertificate);
+      expect(JSON.stringify(replicatorConfig.getHeaders())).to.equal(originalHeaders);
 
-  //     // Verify authenticator
-  //     const replicatorAuth = replicatorConfig.getAuthenticator() as BasicAuthenticator;
-  //     expect(replicatorAuth).to.not.be.null;
+      // Verify authenticator
+      const replicatorAuth = replicatorConfig.getAuthenticator() as BasicAuthenticator;
+      expect(replicatorAuth).to.not.be.null;
 
-  //     if (replicatorAuth && replicatorAuth.toJson) {
-  //       expect(replicatorAuth.toJson().username).to.equal(originalUsername);
-  //       expect(replicatorAuth.toJson().password).to.equal(originalPassword);
-  //     }
+      if (replicatorAuth && replicatorAuth.toJson) {
+        expect(replicatorAuth.toJson().username).to.equal(originalUsername);
+        expect(replicatorAuth.toJson().password).to.equal(originalPassword);
+      }
 
-  //     // Verify collection configuration
-  //     const collectionConfig = replicatorConfig.getCollectionConfig(this.defaultCollection);
-  //     expect(collectionConfig).to.not.be.null;
+      // Verify collection configuration
+      const collectionConfig = replicatorConfig.getCollectionConfig(this.defaultCollection);
+      expect(collectionConfig).to.not.be.null;
 
-  //     // Clean up
-  //     await replicator.stop();
-  //     await replicator.cleanup();
+      // Clean up
+      await replicator.stop();
+      await replicator.cleanup();
 
-  //     return {
-  //       testName: "testCopyingReplicatorConfiguration",
-  //       success: true,
-  //       message: "Successfully verified replicator configuration independence",
-  //       data: undefined,
-  //     };
-  //   } catch (error) {
-  //     return {
-  //       testName: "testCopyingReplicatorConfiguration",
-  //       success: false,
-  //       message: `${error}`,
-  //       data: error.stack || error.toString(),
-  //     };
-  //   }
-  // }
+      return {
+        testName: "testCopyingReplicatorConfiguration",
+        success: true,
+        message: "Successfully verified replicator configuration independence",
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: "testCopyingReplicatorConfiguration",
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
 
   /**
    *
@@ -1177,6 +1171,40 @@ export class ReplicatorTests extends TestCase {
         success: false,
         message: `${error}`,
         data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  async testReplicatorConfigurationImmutability(): Promise<ITestResult> {
+    try {
+      const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
+      const config = new ReplicatorConfiguration(target);
+
+      config.setContinuous(true);
+      config.addCollection(this.defaultCollection);
+      const replicator = await Replicator.create(config);
+
+      // Modify the original configuration
+      config.setContinuous(false);
+
+      // Verify that the replicator's configuration is unchanged
+      const replicatorConfig = replicator.getConfiguration();
+      if (replicatorConfig.getContinuous() !== true) {
+        throw new Error('Replicator configuration was modified');
+      }
+
+      return {
+        testName: 'testReplicatorConfigurationImmutability',
+        success: true,
+        message: 'Replicator configuration is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testReplicatorConfigurationImmutability',
+        success: false,
+        message: error.message || JSON.stringify(error),
+        data: undefined,
       };
     }
   }
