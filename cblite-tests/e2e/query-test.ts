@@ -774,4 +774,246 @@ export class QueryTests extends TestCase {
       data: undefined,
     };
   }
+
+  async testQueryAddChangeListener(): Promise<ITestResult> {
+    try {
+      const expectedInitialCount = 10;
+      await this.createDocs('testQueryAddChangeListener', expectedInitialCount);
+
+      const query = this.database.createQuery(
+        'SELECT number FROM _ WHERE number <= 11'
+      );
+
+      let listenerCalls = 0;
+      let changeCount = 0;
+
+      const token = await query.addChangeListener((change) => {
+        listenerCalls++;
+
+        for (const result of change.results) {
+          changeCount++;
+        }
+      });
+
+      await this.sleep(100);
+
+      expect(listenerCalls).to.equal(1);
+      expect(changeCount).to.equal(expectedInitialCount);
+
+      const doc = this.createDocumentWithIdAndData('11', {
+        number: 11,
+      });
+      changeCount = 0;
+      await this.defaultCollection.save(doc);
+
+      await this.sleep(1000);
+
+      expect(listenerCalls).to.equal(2);
+      expect(changeCount).to.equal(expectedInitialCount + 1);
+
+      await query.removeChangeListener(token);
+
+      return {
+        testName: 'testQueryAddChangeListener',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testQueryAddChangeListener',
+        success: false,
+        message: `Error: ${error.message}`,
+        data: undefined,
+      };
+    }
+  }
+
+  async testLiveQueryNoUpdate(): Promise<ITestResult> {
+    try {
+      const query = this.database.createQuery('SELECT * FROM _');
+
+      let listenerCalls = 0;
+      let changeCount = 0;
+
+      const token = await query.addChangeListener((change) => {
+        listenerCalls++;
+
+        if (!change.query) {
+          throw new Error('Expected change.query to be non-null');
+        }
+
+        if (change.error) {
+          throw new Error(`Unexpected error: ${change.error}`);
+        }
+
+        for (const result of change.results) {
+          changeCount++;
+        }
+      });
+
+      await this.sleep(100);
+
+      expect(listenerCalls).to.equal(1);
+      expect(changeCount).to.equal(0);
+
+      await query.removeChangeListener(token);
+
+      return {
+        testName: 'testLiveQueryNoUpdate',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testLiveQueryNoUpdate',
+        success: false,
+        message: `Error: ${error.message}`,
+        data: undefined,
+      };
+    }
+  }
+
+  async testLiveQueryReturnsEmptyResultSet(): Promise<ITestResult> {
+    try {
+      await this.createDocs('testLiveQueryReturnsEmptyResultSet', 100);
+
+      const query = this.database.createQuery(
+        'SELECT number FROM _ WHERE number < 10 ORDER BY number'
+      );
+
+      let listenerCalls = 0;
+      let initialRowCount = 0;
+      let afterPurgeRowCount = 0;
+
+      const token = await query.addChangeListener((change) => {
+        listenerCalls++;
+
+        if (listenerCalls === 1) {
+          // First notification with initial results
+          initialRowCount = 0;
+          for (const result of change.results) {
+            initialRowCount++;
+          }
+
+          if (initialRowCount > 0) {
+            // Verify first row has expected value
+            expect(change.results[0].number).to.equal(1);
+          }
+        } else if (listenerCalls === 2) {
+          // Second notification after purging doc-1
+          afterPurgeRowCount = 0;
+          for (const result of change.results) {
+            afterPurgeRowCount++;
+          }
+        }
+      });
+
+      await this.sleep(100);
+
+      // Verify the first notification
+      expect(listenerCalls).to.equal(1);
+      expect(initialRowCount).to.equal(9);
+
+      // Purge the document with id doc-1
+      await this.defaultCollection.purgeById('doc-1');
+
+      await this.sleep(1000);
+
+      expect(listenerCalls).to.equal(2);
+      expect(afterPurgeRowCount).to.equal(8);
+
+      await query.removeChangeListener(token);
+
+      return {
+        testName: 'testLiveQueryReturnsEmptyResultSet',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testLiveQueryReturnsEmptyResultSet',
+        success: false,
+        message: `Error: ${error.message}`,
+        data: undefined,
+      };
+    }
+  }
+
+  // TODO when query parameters will be fixed
+  // https://github.com/Couchbase-Ecosystem/cbl-reactnative/issues/22
+
+  // async testLiveQueryUpdateQueryParam(): Promise<ITestResult> {
+  //   try {
+  //     // Load 100 numbered documents
+  //     await this.loadDocuments(100);
+
+  //     // Create a parameterized query
+  //     const queryString =
+  //       'SELECT number1 FROM _ WHERE number1 < $param ORDER BY number1';
+  //     const query = this.database.createQuery(queryString);
+
+  //     // Set initial parameter value to 10
+  //     const parameters = new Parameters();
+  //     parameters.setInt('param', 10);
+  //     query.parameters = parameters;
+
+  //     let listenerCalls = 0;
+  //     let firstResultCount = 0;
+  //     let secondResultCount = 0;
+
+  //     // When adding a change listener
+  //     const token = await query.addChangeListener((change) => {
+  //       listenerCalls++;
+
+  //       if (listenerCalls === 1) {
+  //         // First notification with param = 10
+  //         firstResultCount = change.results.length;
+  //         console.log(`First notification: ${firstResultCount} results`);
+  //       } else if (listenerCalls === 2) {
+  //         // Second notification with param = 5
+  //         secondResultCount = change.results.length;
+  //         console.log(`Second notification: ${secondResultCount} results`);
+  //       }
+  //     });
+
+  //     // Wait for the first notification
+  //     await this.sleep(500);
+
+  //     // Verify the first notification
+  //     expect(listenerCalls).to.equal(1);
+  //     expect(firstResultCount).to.equal(9);
+
+  //     // Update the parameter value to 5
+  //     const newParameters = new Parameters();
+  //     newParameters.setInt('param', 5);
+  //     query.parameters = newParameters;
+
+  //     // Wait for the second notification
+  //     await this.sleep(1000);
+
+  //     // Verify the second notification
+  //     expect(listenerCalls).to.equal(2);
+  //     expect(secondResultCount).to.equal(4);
+
+  //     // Clean up
+  //     await query.removeChangeListener(token);
+
+  //     return {
+  //       testName: 'testLiveQueryUpdateQueryParam',
+  //       success: true,
+  //       message: 'success',
+  //       data: undefined,
+  //     };
+  //   } catch (error) {
+  //     return {
+  //       testName: 'testLiveQueryUpdateQueryParam',
+  //       success: false,
+  //       message: `Error: ${error.message}`,
+  //       data: undefined,
+  //     };
+  //   }
+  // }
 }
