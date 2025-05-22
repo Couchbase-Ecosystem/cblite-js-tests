@@ -290,7 +290,7 @@ export class DocumentTests extends TestCase {
       expect(savedDoc.getFloat('key')).to.equal(0.0);
       expect(savedDoc.getDouble('key')).to.equal(0.0);
       expect(savedDoc.getBoolean('key')).to.equal(false);
-      expect(savedDoc.getBlob('key')).to.be.null;
+      expect(await savedDoc.getBlob('key')).to.be.null;
       expect(savedDoc.getDate('key')).to.be.null;
       expect(savedDoc.getValue('key')).to.be.null;
       expect(savedDoc.getString('key')).to.be.null;
@@ -973,7 +973,7 @@ export class DocumentTests extends TestCase {
       await this.defaultCollection.save(doc);
       const retrievedDoc = await this.defaultCollection.document('doc1');
 
-      const retrievedBlob = retrievedDoc.getBlob('blob');
+      const retrievedBlob =  await retrievedDoc.getBlob('blob');
       const retrievedBlobText = decoder.decode(retrievedBlob.getBytes());
 
       // Assertions
@@ -990,7 +990,7 @@ export class DocumentTests extends TestCase {
       await this.defaultCollection.save(mutableDoc);
       const updatedDoc = await this.defaultCollection.document('doc1');
 
-      const updatedBlob = updatedDoc.getBlob('blob');
+      const updatedBlob = await updatedDoc.getBlob('blob');
       const updatedBlobContent = await updatedDoc.getBlobContent('blob');
       const updatedBlobText = decoder.decode(updatedBlobContent);
 
@@ -1034,22 +1034,22 @@ export class DocumentTests extends TestCase {
       // Retrieve the saved document
       const retrievedDoc = await this.defaultCollection.document('doc1');
 
-      const retrievedBlob = retrievedDoc.getBlob('blob');
+      const retrievedBlob = await retrievedDoc.getBlob('blob');
       const blobBytes = retrievedBlob.getBytes();
       const retrievedBlobText = decoder.decode(blobBytes);
 
       // Assertions
-      expect(retrievedDoc.getBlob('null')).to.be.null;
-      expect(retrievedDoc.getBlob('true')).to.be.null;
-      expect(retrievedDoc.getBlob('false')).to.be.null;
-      expect(retrievedDoc.getBlob('string')).to.be.null;
-      expect(retrievedDoc.getBlob('zero')).to.be.null;
-      expect(retrievedDoc.getBlob('one')).to.be.null;
-      expect(retrievedDoc.getBlob('minus_one')).to.be.null;
-      expect(retrievedDoc.getBlob('one_dot_one')).to.be.null;
-      expect(retrievedDoc.getBlob('date')).to.be.null;
-      expect(retrievedDoc.getBlob('dict')).to.be.null;
-      expect(retrievedDoc.getBlob('array')).to.be.null;
+      expect(await retrievedDoc.getBlob('null')).to.be.null;
+      expect(await retrievedDoc.getBlob('true')).to.be.null;
+      expect(await retrievedDoc.getBlob('false')).to.be.null;
+      expect(await retrievedDoc.getBlob('string')).to.be.null;
+      expect(await retrievedDoc.getBlob('zero')).to.be.null;
+      expect(await retrievedDoc.getBlob('one')).to.be.null;
+      expect(await retrievedDoc.getBlob('minus_one')).to.be.null;
+      expect(await retrievedDoc.getBlob('one_dot_one')).to.be.null;
+      expect(await retrievedDoc.getBlob('date')).to.be.null;
+      expect(await retrievedDoc.getBlob('dict')).to.be.null;
+      expect(await retrievedDoc.getBlob('array')).to.be.null;
 
       // Assertions
       expect(retrievedBlob?.getContentType()).to.equal('text/plain');
@@ -1092,7 +1092,7 @@ export class DocumentTests extends TestCase {
       // Retrieve the saved document
       const retrievedDoc = await this.defaultCollection.document('doc1');
 
-      const retrievedBlob = retrievedDoc.getBlob('blob');
+      const retrievedBlob = await retrievedDoc.getBlob('blob');
       const blobBytes = Array.from(retrievedBlob.getBytes());
       const contentType = retrievedBlob.getContentType();
       const dic = retrievedBlob.toDictionary();
@@ -2153,5 +2153,59 @@ export class DocumentTests extends TestCase {
       message: 'success',
       data: undefined,
     };
+  }
+
+  /**
+   * Test to verify that only metadata is returned from the collection_GetDocument method
+   * and that blobs can still be retrieved using getBlob.
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object.
+   */
+  async testCollectionGetDocumentMetadata(): Promise<ITestResult> {
+    try {
+      const doc = new MutableDocument('doc1');
+      await this.populateData(doc); 
+      await this.defaultCollection.save(doc);
+
+      const retrievedDoc = await this.defaultCollection.document('doc1');
+
+      expect(retrievedDoc.getId()).to.equal('doc1');
+      const dict = retrievedDoc.toDictionary();
+      console.log('dict:', dict);
+
+      expect(dict).to.have.property('blob');
+      const blobMetadata = dict.blob;
+
+      expect(blobMetadata).to.have.property('@type', 'blob');
+      expect(blobMetadata).to.have.property('content_type', 'text/plain');
+      expect(blobMetadata).to.have.property('digest').that.is.a('string');
+      expect(blobMetadata).to.have.property('length', 8);
+
+      const blobKeys = Object.keys(blobMetadata);
+      expect(blobKeys).to.have.members(['@type', 'content_type', 'digest', 'length']);
+      expect(blobKeys).to.have.length(4); 
+
+      const retrievedBlob = await retrievedDoc.getBlob('blob');
+      const decoder = new TextDecoder();
+      const retrievedBlobText = decoder.decode(retrievedBlob.getBytes());
+
+      expect(retrievedBlob).to.not.be.null;
+      expect(retrievedBlob.getContentType()).to.equal('text/plain');
+      expect(retrievedBlobText).to.equal(this.kTestBlob);
+
+      return {
+        testName: 'testCollectionGetDocumentMetadata',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testCollectionGetDocumentMetadata',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
   }
 }
