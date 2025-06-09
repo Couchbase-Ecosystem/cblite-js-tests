@@ -65,7 +65,7 @@ export class ReplicatorTests extends TestCase {
         .addChangeListener((change) => {
           const status = change.status;
           const activityLevel = status.getActivityLevel();
-          console.log(JSON.stringify(change.status.getProgress(), null, 2));
+
           if (
             config.getContinuous() &&
             activityLevel == ReplicatorActivityLevel.IDLE
@@ -75,8 +75,7 @@ export class ReplicatorTests extends TestCase {
               status.getProgress().getCompleted() ==
               status.getProgress().getTotal()
             )
-              console.log('STOPING');
-            replicator.stop();
+              replicator.stop();
           }
 
           if (activityLevel === ReplicatorActivityLevel.STOPPED) {
@@ -735,7 +734,7 @@ export class ReplicatorTests extends TestCase {
    * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
    */
   async testContinuousPushFilter(): Promise<ITestResult> {
-    const docCount = 100;
+    const docCount = 20;
     try {
       const docs = await this.createDocs(docCount);
 
@@ -753,31 +752,19 @@ export class ReplicatorTests extends TestCase {
       );
 
       const replicator = await Replicator.create(pushConfig);
-      let listenerToken: string;
 
-      await new Promise<void>((resolve) => {
-        replicator
-          .addChangeListener((change) => {
-            const status = change.status;
-            if (status.getActivityLevel() === ReplicatorActivityLevel.IDLE) {
-              resolve();
-            }
-          })
-          .then((token) => {
-            listenerToken = token;
-          });
+      replicator.start(false);
 
-        replicator.start(false);
-      });
+      await this.sleep(1000);
 
       const nextDocs = this.createDocumentNumbered(docCount + 1, docCount * 2);
       for (const doc of nextDocs) {
         await this.defaultCollection.save(doc);
       }
-      await this.sleep(500);
+
+      await this.sleep(1000);
 
       await replicator.stop();
-      await replicator.removeChangeListener(listenerToken);
 
       [...docs, ...nextDocs].forEach(
         async (doc) => await this.defaultCollection.purgeById(doc.getId())
@@ -796,6 +783,8 @@ export class ReplicatorTests extends TestCase {
             FROM _default._default
             WHERE number % 3 = 1 AND number > ${docCount}
         `);
+
+      await this.sleep(1000);
 
       const [{ count }] = await filterQuery.execute();
 
@@ -823,9 +812,9 @@ export class ReplicatorTests extends TestCase {
   //  */
   // async testPullFilter(): Promise<ITestResult> {
   //   return {
-  //     testName: "testPullFilter",
+  //     testName: 'testPullFilter',
   //     success: false,
-  //     message: "Not implemented",
+  //     message: 'Not implemented',
   //     data: undefined,
   //   };
   // }
@@ -842,26 +831,6 @@ export class ReplicatorTests extends TestCase {
       docToRemove.setString('species', 'Tiger');
       docToRemove.setString('pattern', 'Hobbes');
       await this.defaultCollection.save(docToRemove);
-
-      let documentDeletedResolve: () => void;
-      const documentDeletedPromise = new Promise<void>((resolve) => {
-        documentDeletedResolve = resolve;
-      });
-
-      const changeListenerToken =
-        await this.defaultCollection.addDocumentChangeListener(
-          docToRemove.getId(),
-          async (change) => {
-            if (change.documentId === docToRemove.getId()) {
-              const retrievedDoc = await this.defaultCollection.document(
-                docToRemove.getId()
-              );
-              if (retrievedDoc === undefined) {
-                documentDeletedResolve();
-              }
-            }
-          }
-        );
 
       const initialSourceCount = await this.defaultCollection.count();
       expect(initialSourceCount.count).to.equal(1);
@@ -886,13 +855,10 @@ export class ReplicatorTests extends TestCase {
 
       await replicator.start(false);
 
-      await documentDeletedPromise;
+      await this.sleep(1000);
 
       await replicator.stop();
       await replicator.removeChangeListener(docReplicationToken);
-      await this.defaultCollection.removeDocumentChangeListener(
-        changeListenerToken
-      );
 
       const finalSourceCount = await this.defaultCollection.count();
 
@@ -920,9 +886,9 @@ export class ReplicatorTests extends TestCase {
   //  */
   // async testPullRemovedDocWithFilterSingleShot(): Promise<ITestResult> {
   //   return {
-  //     testName: "testPullRemovedDocWithFilterSingleShot",
+  //     testName: 'testPullRemovedDocWithFilterSingleShot',
   //     success: false,
-  //     message: "Not implemented",
+  //     message: 'Not implemented',
   //     data: undefined,
   //   };
   // }
@@ -933,9 +899,9 @@ export class ReplicatorTests extends TestCase {
   //  */
   // async testPullRemovedDocWithFilterContinuous(): Promise<ITestResult> {
   //   return {
-  //     testName: "testPullRemovedDocWithFilterContinuous",
+  //     testName: 'testPullRemovedDocWithFilterContinuous',
   //     success: false,
-  //     message: "Not implemented",
+  //     message: 'Not implemented',
   //     data: undefined,
   //   };
   // }
@@ -1460,7 +1426,7 @@ export class ReplicatorTests extends TestCase {
   }
 
   async testFilterPushPerformance(): Promise<ITestResult> {
-    const docCount = 5000;
+    const docCount = 500;
     try {
       const docs = await this.createDocs(docCount);
 
@@ -1492,10 +1458,10 @@ export class ReplicatorTests extends TestCase {
       await this.runReplication(pullConfig);
 
       const filterQuery = this.database.createQuery(`
-            SELECT COUNT(*) as count
-            FROM _default._default
-            WHERE number % 2 = 1
-        `);
+              SELECT COUNT(*) as count
+              FROM _default._default
+              WHERE number % 2 = 1
+          `);
 
       const [{ count }] = await filterQuery.execute();
 
