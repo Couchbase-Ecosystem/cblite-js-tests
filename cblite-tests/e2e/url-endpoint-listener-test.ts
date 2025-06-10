@@ -507,4 +507,200 @@ async testP2PReplication(): Promise<ITestResult> {
       };
     }
   }
+/**
+ * Test P2P replication with basic authentication required on the listener.
+ * The listener requires username/password, and the replicator must provide them.
+ */
+async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
+  const db1 = this.database;
+  const db2 = new Database(this.otherDatabaseName, this.database.getConfig());
+  await db2.open();
+  let listener: URLEndpointListener | undefined;
+  let replicator: Replicator | undefined;
+  const USERNAME = "testuser";
+  const PASSWORD = "testpass";
+  try {
+    // 1. Create/open two databases
+    const collection1 = await db1.defaultCollection();
+    const collection2 = await db2.defaultCollection();
+
+    // 2. Add a document to db1
+    const doc1a = new MutableDocument('p2p_auth_doc1a', { value: 'authTest1a' });
+    await collection1.save(doc1a);
+
+    // 3. Start Passive Peer (Listener) on db1 with basic auth required
+    listener = await URLEndpointListener.create({
+      collections: [{
+        databaseName: db1.getUniqueName(),
+        scopeName: '_default',
+        name: '_default'
+      }],
+      port: 4990,
+      networkInterface: '0.0.0.0',
+      authenticatorConfig: {
+        type: 'basic',
+        data: {
+          username: USERNAME,
+          password: PASSWORD
+        }
+      }
+    });
+    await listener.start();
+
+    // 4. Setup Active Peer (Replicator) on db2 with correct basic auth
+    const endpointString = `wss://localhost:4990/${db1.getName()}`;
+    const endpoint = new URLEndpoint(endpointString);
+    const config = new ReplicatorConfiguration(endpoint);
+    config.addCollection(collection2);
+    config.setReplicatorType(ReplicatorType.PULL);
+    config.setContinuous(false);
+
+    // Add BasicAuthenticator to replicator
+    const { BasicAuthenticator } = await import('cblite-js');
+    config.setAuthenticator(new BasicAuthenticator(USERNAME, PASSWORD));
+
+    replicator = await Replicator.create(config);
+    await replicator.start(false);
+    await this.sleep(1000);
+
+    // 5. Verify docs replicated to db2
+    const doc1b = await collection2.document('p2p_auth_doc1a');
+    expect(doc1b).to.not.be.null;
+    expect(doc1b.getId()).to.equal(doc1a.getId());
+    expect(doc1b.toDictionary()).to.deep.equal(doc1a.toDictionary());
+
+    // Cleanup
+    await replicator.stop();
+    await listener.stop();
+    await db1.close();
+    await db2.close();
+
+    return {
+      testName: "testP2PReplicationWithBasicAuth",
+      success: true,
+      message: "Successfully replicated documents with basic auth required on listener",
+      data: undefined,
+    };
+  } catch (error) {
+    if (replicator) await replicator.stop().catch(() => {});
+    if (listener) await listener.stop().catch(() => {});
+    await db2.close().catch(() => {});
+    return {
+      testName: "testP2PReplicationWithBasicAuth",
+      success: false,
+      message: `${error}`,
+      data: undefined,
+    };
+  }
+}
+
+/**
+ * Test P2P replication with incorrect basic authentication credentials.
+ * The listener requires username/password, and the replicator provides wrong ones.
+ * This should fail as expected.
+ */
+async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
+  const db1 = this.database;
+  const db2 = new Database(this.otherDatabaseName, this.database.getConfig());
+  await db2.open();
+  let listener: URLEndpointListener | undefined;
+  let replicator: Replicator | undefined;
+  const CORRECT_USERNAME = "testuser";
+  const CORRECT_PASSWORD = "testpass";
+  const WRONG_USERNAME = "wronguser";
+  const WRONG_PASSWORD = "wrongpass";
+  try {
+    // 1. Create/open two databases
+    const collection1 = await db1.defaultCollection();
+    const collection2 = await db2.defaultCollection();
+
+    // 2. Add a document to db1
+    const doc1a = new MutableDocument('p2p_wrong_auth_doc1a', { value: 'wrongAuthTest1a' });
+    await collection1.save(doc1a);
+
+    // 3. Start Passive Peer (Listener) on db1 with basic auth required
+    listener = await URLEndpointListener.create({
+      collections: [{
+        databaseName: db1.getUniqueName(),
+        scopeName: '_default',
+        name: '_default'
+      }],
+      port: 4991,
+      networkInterface: '0.0.0.0',
+      authenticatorConfig: {
+        type: 'basic',
+        data: {
+          username: CORRECT_USERNAME,
+          password: CORRECT_PASSWORD
+        }
+      }
+    });
+    await listener.start();
+    await this.sleep(1000);
+
+    // 4. Setup Active Peer (Replicator) on db2 with incorrect basic auth
+    const endpointString = `wss://localhost:4991/${db1.getName()}`;
+    const endpoint = new URLEndpoint(endpointString);
+    const config = new ReplicatorConfiguration(endpoint);
+    config.addCollection(collection2);
+    config.setReplicatorType(ReplicatorType.PULL);
+    config.setContinuous(false);
+
+    // Add BasicAuthenticator to replicator with wrong credentials
+    const { BasicAuthenticator } = await import('cblite-js');
+    config.setAuthenticator(new BasicAuthenticator(WRONG_USERNAME, WRONG_PASSWORD));
+
+    replicator = await Replicator.create(config);
+    
+    // Create a promise that will resolve when we get an error
+    const replicationError = new Promise((resolve) => {
+      replicator.addChangeListener((change) => {
+        const error = change.status.getError();
+        if (error) {
+          resolve(error);
+        }
+      });
+    });
+
+    await replicator.start(false);
+    
+    // Wait for error or timeout after 5 seconds
+    const error = await Promise.race([
+      replicationError,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout waiting for auth error')), 5000))
+    ]);
+
+    // Verify we got an authentication error
+    expect(error).to.not.be.null;
+    console.log('error: ', error);  
+    expect(error.toString()).to.include('Unauthorized');
+
+    // Verify document was NOT replicated to db2
+    const doc1b = await collection2.document('p2p_wrong_auth_doc1a');
+    expect(doc1b).to.be.undefined;
+
+    // Cleanup
+    await replicator.stop();
+    await listener.stop();
+    await db1.close();
+    await db2.close();
+
+    return {
+      testName: "testP2PReplicationWithWrongBasicAuth",
+      success: true,
+      message: "Successfully verified that replication fails with incorrect credentials",
+      data: undefined,
+    };
+  } catch (error) {
+    if (replicator) await replicator.stop().catch(() => {});
+    if (listener) await listener.stop().catch(() => {});
+    await db2.close().catch(() => {});
+    return {
+      testName: "testP2PReplicationWithWrongBasicAuth",
+      success: false,
+      message: `${error}`,
+      data: error.stack || error.toString(),
+    };
+  }
+}
 }
