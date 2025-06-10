@@ -1,5 +1,5 @@
-import { TestCase } from './test-case';
-import { ITestResult } from './test-result.types';
+import { TestCase } from "./test-case";
+import { ITestResult } from "./test-result.types";
 //import * as namesData from "./names_100.json";
 import {
   Collection,
@@ -8,9 +8,9 @@ import {
   MutableDocument,
   Parameters,
   Query,
-} from 'cblite-js';
+} from "cblite-js";
 
-import { expect } from 'chai';
+import { expect } from "chai";
 
 /**
  * QueryTests - reminder all test cases must start with 'test' in the name of the method or they will not run
@@ -22,8 +22,8 @@ export class QueryTests extends TestCase {
 
   async testQueryDefaultCollection(): Promise<ITestResult> {
     const queries = [
-      'SELECT name.first FROM _ ORDER BY name.first LIMIT 1',
-      'SELECT name.first FROM _default ORDER BY name.first limit 1',
+      "SELECT name.first FROM _ ORDER BY name.first LIMIT 1",
+      "SELECT name.first FROM _default ORDER BY name.first limit 1",
       `SELECT name.first
              FROM \`${this.database.getName()}\`
              ORDER BY name.first limit 1`,
@@ -31,57 +31,57 @@ export class QueryTests extends TestCase {
     return await this.queryCollectionNamesData(
       this.defaultCollection,
       queries,
-      'testQueryDefaultCollection'
+      "testQueryDefaultCollection"
     );
   }
 
   async testQueryDefaultScope(): Promise<ITestResult> {
-    const collection = await this.database.createCollection('names');
+    const collection = await this.database.createCollection("names");
     const queries = [
-      'SELECT name.first FROM _default.names ORDER BY name.first LIMIT 1',
-      'SELECT name.first FROM names ORDER BY name.first LIMIT 1',
+      "SELECT name.first FROM _default.names ORDER BY name.first LIMIT 1",
+      "SELECT name.first FROM names ORDER BY name.first LIMIT 1",
     ];
     return await this.queryCollectionNamesData(
       collection,
       queries,
-      'testQueryDefaultScope'
+      "testQueryDefaultScope"
     );
   }
 
   async testQueryCollection(): Promise<ITestResult> {
-    const collection = await this.database.createCollection('names', 'people');
+    const collection = await this.database.createCollection("names", "people");
     const queries = [
-      'SELECT name.first FROM people.names ORDER BY name.first LIMIT 1',
+      "SELECT name.first FROM people.names ORDER BY name.first LIMIT 1",
     ];
     return await this.queryCollectionNamesData(
       collection,
       queries,
-      'testQueryCollection'
+      "testQueryCollection"
     );
   }
 
   async testQueryInvalidCollection(): Promise<ITestResult> {
-    const collection = await this.database.createCollection('names', 'people');
+    const collection = await this.database.createCollection("names", "people");
     const queries = [
-      'SELECT name.first FROM person.names ORDER BY name.first LIMIT 11',
+      "SELECT name.first FROM person.names ORDER BY name.first LIMIT 11",
     ];
     const result = await this.queryCollectionNamesData(
       collection,
       queries,
-      'testQueryInvalidCollection'
+      "testQueryInvalidCollection"
     );
     if (!result.success) {
       return {
-        testName: 'testQueryInvalidCollection',
+        testName: "testQueryInvalidCollection",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } else {
       return {
-        testName: '',
+        testName: "",
         success: false,
-        message: 'Error - expected query to fail',
+        message: "Error - expected query to fail",
         data: undefined,
       };
     }
@@ -90,50 +90,50 @@ export class QueryTests extends TestCase {
   async testJoinWithCollections(): Promise<ITestResult> {
     try {
       const flowersCol = await this.database.createCollection(
-        'flowers',
-        'test'
+        "flowers",
+        "test"
       );
-      const colorsCol = await this.database.createCollection('colors', 'test');
+      const colorsCol = await this.database.createCollection("colors", "test");
 
       //add documents
       await flowersCol.save(
-        new MutableDocument('c1', null, { name: 'rose', cid: 1 })
+        new MutableDocument("c1", null, { name: "rose", cid: 1 })
       );
       await flowersCol.save(
-        new MutableDocument('c2', null, { name: 'hydrangea', cid: 2 })
+        new MutableDocument("c2", null, { name: "hydrangea", cid: 2 })
       );
 
       await colorsCol.save(
-        new MutableDocument('c1', null, { color: 'red', cid: 1 })
+        new MutableDocument("c1", null, { color: "red", cid: 1 })
       );
       await colorsCol.save(
-        new MutableDocument('c2', null, { color: 'blue', cid: 2 })
+        new MutableDocument("c2", null, { color: "blue", cid: 2 })
       );
       await colorsCol.save(
-        new MutableDocument('c3', null, { color: 'white', cid: 3 })
+        new MutableDocument("c3", null, { color: "white", cid: 3 })
       );
 
       const strQuery =
-        'SELECT a.name, b.color FROM test.flowers a JOIN test.colors b ON a.cid = b.cid ORDER BY a.name';
+        "SELECT a.name, b.color FROM test.flowers a JOIN test.colors b ON a.cid = b.cid ORDER BY a.name";
 
       const query = this.database.createQuery(strQuery);
       const result = await query.execute();
 
       expect(result.length).to.be.equal(2);
-      expect(result[0].name).to.be.equal('hydrangea');
-      expect(result[0].color).to.be.equal('blue');
-      expect(result[1].name).to.be.equal('rose');
-      expect(result[1].color).to.be.equal('red');
+      expect(result[0].name).to.be.equal("hydrangea");
+      expect(result[0].color).to.be.equal("blue");
+      expect(result[1].name).to.be.equal("rose");
+      expect(result[1].color).to.be.equal("red");
 
       return {
-        testName: 'testJoinWithCollections',
+        testName: "testJoinWithCollections",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
       return {
-        testName: 'testJoinWithCollections',
+        testName: "testJoinWithCollections",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -144,25 +144,25 @@ export class QueryTests extends TestCase {
   async testFTSWithFTSIndexDefaultCol(): Promise<ITestResult> {
     try {
       await this.loadNamesData(this.defaultCollection);
-      const indexProperty = FullTextIndexItem.property('name.first');
+      const indexProperty = FullTextIndexItem.property("name.first");
       const index = IndexBuilder.fullTextIndex(indexProperty);
-      await this.defaultCollection.createIndex('index', index);
+      await this.defaultCollection.createIndex("index", index);
 
       const indexes: string[] = [
-        'index',
-        '_.index',
-        '_default.index',
-        'd.index',
+        "index",
+        "_.index",
+        "_default.index",
+        "d.index",
       ];
       const froms: string[] = [
-        '_',
-        '_',
-        '_default',
+        "_",
+        "_",
+        "_default",
         `\`${this.database.getName()}\``,
       ];
 
       for (let i = 0; i < indexes.length; i++) {
-        let qStr = '';
+        let qStr = "";
         if (indexes[i] !== indexes[indexes.length - 1]) {
           qStr = `SELECT name
                             FROM ${froms[i]}
@@ -178,18 +178,18 @@ export class QueryTests extends TestCase {
         const q = this.database.createQuery(qStr);
         const rs = await q.execute();
         expect(rs.length).to.be.equal(2);
-        expect(rs[0].name.last).to.be.equal('Grebel');
-        expect(rs[1].name.last).to.be.equal('Okorududu');
+        expect(rs[0].name.last).to.be.equal("Grebel");
+        expect(rs[1].name.last).to.be.equal("Okorududu");
       }
       return {
-        testName: 'testFTSWithFTSIndexDefaultCol',
+        testName: "testFTSWithFTSIndexDefaultCol",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
       return {
-        testName: 'testFTSWithFTSIndexDefaultCol',
+        testName: "testFTSWithFTSIndexDefaultCol",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -199,34 +199,34 @@ export class QueryTests extends TestCase {
 
   async testFTSWithFTSIndexNamedCol(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await col.save(
-        new MutableDocument('person1', null, {
-          name: { first: 'Jasper', last: 'Grebel' },
-          random: '4',
+        new MutableDocument("person1", null, {
+          name: { first: "Jasper", last: "Grebel" },
+          random: "4",
         })
       );
       await col.save(
-        new MutableDocument('person2', null, {
-          name: { first: 'Jasper', last: 'Okorududu' },
-          random: '1',
+        new MutableDocument("person2", null, {
+          name: { first: "Jasper", last: "Okorududu" },
+          random: "1",
         })
       );
       await col.save(
-        new MutableDocument('person3', null, {
-          name: { first: 'Monica', last: 'Polina' },
-          random: '2',
+        new MutableDocument("person3", null, {
+          name: { first: "Monica", last: "Polina" },
+          random: "2",
         })
       );
 
-      const indexProperty = FullTextIndexItem.property('name.first');
+      const indexProperty = FullTextIndexItem.property("name.first");
       const index = IndexBuilder.fullTextIndex(indexProperty);
-      await col.createIndex('index', index);
+      await col.createIndex("index", index);
 
-      const indexes: string[] = ['index', 'people.index', 'p.index'];
+      const indexes: string[] = ["index", "people.index", "p.index"];
       for (let counter = 0; counter < indexes.length; counter++) {
-        let qStr = '';
+        let qStr = "";
         if (indexes[counter] !== indexes[indexes.length - 1]) {
           qStr = `SELECT name
                             FROM test.people
@@ -242,18 +242,18 @@ export class QueryTests extends TestCase {
         const q = this.database.createQuery(qStr);
         const rs = await q.execute();
         expect(rs.length).to.be.equal(2);
-        expect(rs[0].name.last).to.be.equal('Grebel');
-        expect(rs[1].name.last).to.be.equal('Okorududu');
+        expect(rs[0].name.last).to.be.equal("Grebel");
+        expect(rs[1].name.last).to.be.equal("Okorududu");
       }
       return {
-        testName: 'testFTSWithFTSIndexNamedCol',
+        testName: "testFTSWithFTSIndexNamedCol",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
       return {
-        testName: 'testFTSWithFTSIndexNamedCol',
+        testName: "testFTSWithFTSIndexNamedCol",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -264,40 +264,40 @@ export class QueryTests extends TestCase {
   async testFtsJoinCollection(): Promise<ITestResult> {
     try {
       const flowersCol = await this.database.createCollection(
-        'flowers',
-        'test'
+        "flowers",
+        "test"
       );
-      const colorsCol = await this.database.createCollection('colors', 'test');
+      const colorsCol = await this.database.createCollection("colors", "test");
 
       //add documents
       await flowersCol.save(
-        new MutableDocument('c1', null, {
-          name: 'rose',
+        new MutableDocument("c1", null, {
+          name: "rose",
           cid: 1,
-          description: 'Red flowers',
+          description: "Red flowers",
         })
       );
       await flowersCol.save(
-        new MutableDocument('c2', null, {
-          name: 'hydrangea',
+        new MutableDocument("c2", null, {
+          name: "hydrangea",
           cid: 2,
-          description: 'Blue flowers',
+          description: "Blue flowers",
         })
       );
 
       await colorsCol.save(
-        new MutableDocument('c1', null, { color: 'red', cid: 1 })
+        new MutableDocument("c1", null, { color: "red", cid: 1 })
       );
       await colorsCol.save(
-        new MutableDocument('c2', null, { color: 'blue', cid: 2 })
+        new MutableDocument("c2", null, { color: "blue", cid: 2 })
       );
       await colorsCol.save(
-        new MutableDocument('c3', null, { color: 'white', cid: 3 })
+        new MutableDocument("c3", null, { color: "white", cid: 3 })
       );
 
-      const indexProperty = FullTextIndexItem.property('description');
+      const indexProperty = FullTextIndexItem.property("description");
       const index = IndexBuilder.fullTextIndex(indexProperty);
-      await flowersCol.createIndex('descIndex', index);
+      await flowersCol.createIndex("descIndex", index);
 
       const strQuery =
         "SELECT f.name, f.description, c.color FROM test.flowers f JOIN test.colors c ON f.cid = c.cid WHERE match(f.descIndex, 'red') ORDER BY f.name";
@@ -306,19 +306,19 @@ export class QueryTests extends TestCase {
       const result = await query.execute();
 
       expect(result.length).to.be.equal(1);
-      expect(result[0].name).to.be.equal('rose');
-      expect(result[0].color).to.be.equal('red');
-      expect(result[0].description).to.be.equal('Red flowers');
+      expect(result[0].name).to.be.equal("rose");
+      expect(result[0].color).to.be.equal("red");
+      expect(result[0].description).to.be.equal("Red flowers");
 
       return {
-        testName: 'testFtsJoinCollection',
+        testName: "testFtsJoinCollection",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
       return {
-        testName: 'testFtsJoinCollection',
+        testName: "testFtsJoinCollection",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -329,31 +329,31 @@ export class QueryTests extends TestCase {
   async testSelectAllResultKey(): Promise<ITestResult> {
     try {
       const flowersCol = await this.database.createCollection(
-        'flowers',
-        'test'
+        "flowers",
+        "test"
       );
 
       //add documents
       await flowersCol.save(
-        new MutableDocument('c1', null, { name: 'rose', cid: 1 })
+        new MutableDocument("c1", null, { name: "rose", cid: 1 })
       );
       await this.defaultCollection.save(
-        new MutableDocument('c1', null, { name: 'rose', cid: 1 })
+        new MutableDocument("c1", null, { name: "rose", cid: 1 })
       );
 
       const froms = [
         `\`${this.database.getName()}\``,
-        '_',
-        '_default._default',
-        'test.flowers',
-        'test.flowers as f',
+        "_",
+        "_default._default",
+        "test.flowers",
+        "test.flowers as f",
       ];
       const expectedKeyNames = [
         this.database.getName(),
-        '_',
-        '_default',
-        'flowers',
-        'f',
+        "_",
+        "_default",
+        "flowers",
+        "f",
       ];
 
       for (let counter = 0; counter < froms.length; counter++) {
@@ -367,16 +367,16 @@ export class QueryTests extends TestCase {
         expect(keyValue).to.be.equal(expectedKeyNames[counter]);
       }
       return {
-        testName: 'testSelectAllResultKey',
+        testName: "testSelectAllResultKey",
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
       return {
-        testName: 'testSelectAllResultKey',
+        testName: "testSelectAllResultKey",
         success: false,
-        message: JSON.stringify(error),
+        message: JSON.stringify(error), 
         data: undefined,
       };
     }
@@ -384,26 +384,26 @@ export class QueryTests extends TestCase {
 
   async testQueryUTCDateParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
-      const date = new Date('2020-01-01T00:00:00.000Z');
+      const date = new Date("2020-01-01T00:00:00.000Z");
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE dateUTC = $param limit 1'
+        "SELECT * FROM test.people WHERE dateUTC = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setDate('param', date);
+      parameters.setDate("param", date);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'dateUTC',
+        "dateUTC",
         date.toISOString(),
-        'testQueryUTCDateParameter'
+        "testQueryUTCDateParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryUTCDateParameter',
+        testName: "testQueryUTCDateParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -413,26 +413,26 @@ export class QueryTests extends TestCase {
 
   async testQueryOffsetDateParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
-      const date = new Date('2020-01-01T00:00:00.000+02:00');
+      const date = new Date("2020-01-01T00:00:00.000+02:00");
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE dateOffset = $param limit 1'
+        "SELECT * FROM test.people WHERE dateOffset = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setDate('param', date);
+      parameters.setDate("param", date);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'dateOffset',
+        "dateOffset",
         date.toISOString(),
-        'testQueryOffsetDateParameter'
+        "testQueryOffsetDateParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryOffsetDateParameter',
+        testName: "testQueryOffsetDateParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -441,26 +441,26 @@ export class QueryTests extends TestCase {
   }
   async testQueryNoTimeZoneDateParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
-      const date = new Date('2020-01-01T00:00:00.000');
+      const date = new Date("2020-01-01T00:00:00.000");
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE dateNoTimeZone = $param limit 1'
+        "SELECT * FROM test.people WHERE dateNoTimeZone = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setDate('param', date);
+      parameters.setDate("param", date);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'dateNoTimeZone',
+        "dateNoTimeZone",
         date.toISOString(),
-        'testQueryNoTimeZoneDateParameter'
+        "testQueryNoTimeZoneDateParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryNoTimeZoneDateParameter',
+        testName: "testQueryNoTimeZoneDateParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -470,25 +470,25 @@ export class QueryTests extends TestCase {
 
   async testQueryStringParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE stringPunk = $param limit 1'
+        "SELECT * FROM test.people WHERE stringPunk = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setString('param', 'Jett');
+      parameters.setString("param", "Jett");
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'stringPunk',
-        'Jett',
-        'testQueryStringParameter'
+        "stringPunk",
+        "Jett",
+        "testQueryStringParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryStringParameter',
+        testName: "testQueryStringParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -498,25 +498,25 @@ export class QueryTests extends TestCase {
 
   async testQueryDoubleSmallParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE doubleSmall = $param limit 1'
+        "SELECT * FROM test.people WHERE doubleSmall = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setDouble('param', -1.0e200);
+      parameters.setDouble("param", -1.0e200);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'doubleSmall',
+        "doubleSmall",
         -1.0e200,
-        'testQueryDoubleSmallParameter'
+        "testQueryDoubleSmallParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryDoubleSmallParameter',
+        testName: "testQueryDoubleSmallParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -526,25 +526,25 @@ export class QueryTests extends TestCase {
 
   async testQueryDoubleBigParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE doubleBig = $param limit 1'
+        "SELECT * FROM test.people WHERE doubleBig = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setDouble('param', 1.0e200);
+      parameters.setDouble("param", 1.0e200);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'doubleBig',
+        "doubleBig",
         1.0e200,
-        'testQueryDoubleBigParameter'
+        "testQueryDoubleBigParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryDoubleBigParameter',
+        testName: "testQueryDoubleBigParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -554,25 +554,25 @@ export class QueryTests extends TestCase {
 
   async testQueryLongSmallParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE longSmall = $param limit 1'
+        "SELECT * FROM test.people WHERE longSmall = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setLong('param', -4000000000);
+      parameters.setLong("param", -4000000000);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'longSmall',
+        "longSmall",
         -4000000000,
-        'testQueryLongSmallParameter'
+        "testQueryLongSmallParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryLongSmallParameter',
+        testName: "testQueryLongSmallParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -582,25 +582,25 @@ export class QueryTests extends TestCase {
 
   async testQueryLongBigParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE longBig = $param limit 1'
+        "SELECT * FROM test.people WHERE longBig = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setLong('param', 4000000000);
+      parameters.setLong("param", 4000000000);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'longBig',
+        "longBig",
         4000000000,
-        'testQueryLongBigParameter'
+        "testQueryLongBigParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryLongBigParameter',
+        testName: "testQueryLongBigParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -610,25 +610,25 @@ export class QueryTests extends TestCase {
 
   async testQueryLongZeroParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE longZero = $param limit 1'
+        "SELECT * FROM test.people WHERE longZero = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setLong('param', 0);
+      parameters.setLong("param", 0);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'longZero',
+        "longZero",
         0,
-        'testQueryLongZeroParameter'
+        "testQueryLongZeroParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryLongZeroParameter',
+        testName: "testQueryLongZeroParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -638,25 +638,25 @@ export class QueryTests extends TestCase {
 
   async testQueryBooleanTrueParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE booleanTrue = $param limit 1'
+        "SELECT * FROM test.people WHERE booleanTrue = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setBoolean('param', true);
+      parameters.setBoolean("param", true);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'booleanTrue',
+        "booleanTrue",
         true,
-        'testQueryBooleanTrueParameter'
+        "testQueryBooleanTrueParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryBooleanTrueParameter',
+        testName: "testQueryBooleanTrueParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -666,25 +666,25 @@ export class QueryTests extends TestCase {
 
   async testQueryBooleanFalseParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE booleanFalse = $param limit 1'
+        "SELECT * FROM test.people WHERE booleanFalse = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setBoolean('param', false);
+      parameters.setBoolean("param", false);
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'booleanFalse',
+        "booleanFalse",
         false,
-        'testQueryBooleanFalseParameter'
+        "testQueryBooleanFalseParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryBooleanFalseParameter',
+        testName: "testQueryBooleanFalseParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -694,25 +694,25 @@ export class QueryTests extends TestCase {
 
   async testQueryValueParameter(): Promise<ITestResult> {
     try {
-      const col = await this.database.createCollection('people', 'test');
+      const col = await this.database.createCollection("people", "test");
       //add documents
       await this.loadDocumentsIntoCollection(20, col);
       //test null value
       const valueQuery = this.database.createQuery(
-        'SELECT * FROM test.people WHERE dataValue = $param limit 1'
+        "SELECT * FROM test.people WHERE dataValue = $param limit 1"
       );
       const parameters = new Parameters();
-      parameters.setValue('param', 'value');
+      parameters.setValue("param", "value");
       valueQuery.parameters = parameters;
       return await this.runQueryParameterTest(
         valueQuery,
-        'dataValue',
-        'value',
-        'testQueryValueParameter'
+        "dataValue",
+        "value",
+        "testQueryValueParameter"
       );
     } catch (error) {
       return {
-        testName: 'testQueryValueParameter',
+        testName: "testQueryValueParameter",
         success: false,
         message: JSON.stringify(error),
         data: undefined,
@@ -734,7 +734,7 @@ export class QueryTests extends TestCase {
       return {
         testName: testName,
         success: true,
-        message: 'success',
+        message: "success",
         data: undefined,
       };
     } catch (error) {
@@ -770,7 +770,7 @@ export class QueryTests extends TestCase {
     return {
       testName: testName,
       success: true,
-      message: 'success',
+      message: "success",
       data: undefined,
     };
   }
@@ -783,7 +783,8 @@ export class QueryTests extends TestCase {
       const query = this.database.createQuery(
         'SELECT number FROM _ WHERE number <= $numberParam'
       );
-      query.parameters.setInt('numberParam', 11);
+      query.parameters.setInt('numberParam', 11)
+
 
       let listenerCalls = 0;
       let changeCount = 0;
