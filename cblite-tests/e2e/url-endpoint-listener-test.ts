@@ -1,26 +1,52 @@
 import { TestCase } from './test-case';
 import { ITestResult } from './test-result.types';
-import { Database, MutableDocument, Replicator, ReplicatorActivityLevel, ReplicatorConfiguration, ReplicatorType, URLEndpoint, URLEndpointListener } from 'cblite-js';
+import { Database, MutableDocument, Replicator, ReplicatorActivityLevel, ReplicatorConfiguration, ReplicatorStatus, ReplicatorType, URLEndpoint, URLEndpointListener, URLEndpointListenerStatus } from 'cblite-js';
 import { expect } from 'chai';
 export class URLEndpointListenerTests extends TestCase {
   constructor() {
     super();
   }
 
+  async init(): Promise<ITestResult> {
+    await super.init();
+      const otherDatabaseResult = await this.getDatabase(
+        this.otherDatabaseName,
+        this.directory,
+        ""
+      );
+      if (otherDatabaseResult instanceof Database) {
+        this.otherDatabase = otherDatabaseResult;
+        console.log('otherDatabase: ', this.otherDatabase);
+        this.otherDatabaseUniqueName = await this.otherDatabase.open();
+      } else {
+        return {
+          testName: "init",
+          success: false,
+          message: "Failed to initialize other database",
+          data: undefined,
+        };
+      }
+
+      return {
+        testName: "init",
+        success: true,
+        message: "Successfully initialized databases",
+        data: undefined,
+      };
+    }
+
+
 /**
  * P2P Replication: Passive peer on db1, active peer on db2.
  * @returns {Promise<ITestResult>}
  */
 async testP2PReplication(): Promise<ITestResult> {
-  const db1 = this.database;
-  const db2 = new Database(this.otherDatabaseName, this.database.getConfig())
-  await db2.open();
-  let listener
-  let replicator
+  let listener: URLEndpointListener | undefined;
+  let replicator: Replicator | undefined;
   try {
     // 1. Create/open two databases
-    const collection1 = await db1.defaultCollection();
-    const collection2 = await db2.defaultCollection();
+    const collection1 = await this.database.defaultCollection();
+    const collection2 = await this.otherDatabase.defaultCollection();
     console.log('Collections:', collection1, collection2);
 
     // 2. Add documents to db1
@@ -32,7 +58,7 @@ async testP2PReplication(): Promise<ITestResult> {
     // 3. Start Passive Peer (Listener) on db1
     listener =  await URLEndpointListener.create({
       collections: [{
-        databaseName: db1.getUniqueName(),
+        databaseName: this.database.getUniqueName(),
         scopeName: '_default',
         name: '_default'
       }],
@@ -43,7 +69,7 @@ async testP2PReplication(): Promise<ITestResult> {
     console.log(`Listener started on port ${listener.getPort()}`);
 
     // 4. Setup Active Peer (Replicator) on db2
-    const endpointString = `wss://localhost:4988/${db1.getName()}`
+    const endpointString = `wss://localhost:4988/${this.database.getName()}`
     const endpoint = new URLEndpoint(endpointString);
     const config = new ReplicatorConfiguration(endpoint);
     config.addCollection(collection2);
@@ -58,24 +84,8 @@ async testP2PReplication(): Promise<ITestResult> {
       const error = change.status.getError();
       if (error) {
         console.error(`Replication error: ${JSON.stringify(error)}`);
-        throw new Error(`Replication error: ${JSON.stringify(error)}`);
       } else {
         console.log(`Replication status: ${change.status.getActivityLevel()}`);
-      }
-      if (change.status.getActivityLevel() === ReplicatorActivityLevel.STOPPED) {
-        console.log('Replication stopped successfully');
-      }
-      if (change.status.getActivityLevel() === ReplicatorActivityLevel.IDLE) {
-        console.log('Replication is idle');
-      }
-      if (change.status.getActivityLevel() === ReplicatorActivityLevel.BUSY) {
-        console.log('Replication is busy');
-      }
-      if (change.status.getActivityLevel() === ReplicatorActivityLevel.CONNECTING) {
-        console.log('Replication is connecting');
-      }
-      if (change.status.getActivityLevel() === ReplicatorActivityLevel.OFFLINE) {
-        console.log('Replication is offline');
       }
     })
 
@@ -91,12 +101,11 @@ async testP2PReplication(): Promise<ITestResult> {
     expect(doc1b.toDictionary()).to.deep.equal(doc1a.toDictionary());
 
     // Cleanup
-    
+    await replicator.removeChangeListener(token);
     console.log('Replication successful, stopping replicator and listener');
+
     await replicator.stop();
     await listener.stop();
-    await db1.close();
-    await db2.close();
 
     return {
       testName: "testP2PReplication",
@@ -127,7 +136,7 @@ async testP2PReplication(): Promise<ITestResult> {
           name: '_default'
         }],
         port: 12345,
-        networkInterface: 'en0',
+        networkInterface: '0.0.0.0',
         disableTLS: true,
         enableDeltaSync: true
       };
@@ -173,11 +182,8 @@ async testP2PReplication(): Promise<ITestResult> {
           disableTLS: true,
           enableDeltaSync: false
         };
-        const db = this.database;
-        const db2 = new Database(this.otherDatabaseName, db.getConfig());
-        await db2.open();
-        const collection1 = await db.defaultCollection();
-        const collection2 = await db2.defaultCollection();
+        const collection1 = await this.database.defaultCollection();
+        const collection2 = await this.otherDatabase.defaultCollection();
   
         // Add 50 documents to db to make replication take longer
         for (let i = 0; i < 50; i++) {
@@ -189,12 +195,8 @@ async testP2PReplication(): Promise<ITestResult> {
         const listener = await URLEndpointListener.create(args);
         await listener.start();
   
-        // Check status before replication
-        const statusBefore = await listener.getStatus();
-        console.log('Listener status before replication:', statusBefore);
-  
         // Setup and start replicator
-        const endpointString = `ws://localhost:12346/${db.getName()}`;
+        const endpointString = `ws://localhost:12346/${this.database.getName()}`;
         const endpoint = new URLEndpoint(endpointString);
         const config = new ReplicatorConfiguration(endpoint);
         config.addCollection(collection2);
@@ -204,33 +206,20 @@ async testP2PReplication(): Promise<ITestResult> {
         const replicator = await Replicator.create(config);
         await replicator.start(false);
   
-        const statusDuring = await listener.getStatus();
-        console.log('Listener status during replication:', statusDuring);
-  
+        await this.sleep(5000)
         // Check status after replication
         const statusAfterReplication = await listener.getStatus();
-        console.log('Listener status after replication:', statusAfterReplication);
+        expect(statusAfterReplication.activeConnectionCount).to.equal(0);
+        expect(statusAfterReplication.connectionsCount).to.equal(1);
   
         // Cleanup
         await replicator.stop();
         await listener.stop();
   
-        // Check status after stopping listener
-        let statusAfter: any;
-        try {
-          statusAfter = await listener.getStatus();
-          console.log('Listener status after stop:', statusAfter);
-        } catch (err) {
-          statusAfter = { error: err.message || err.toString() };
-          console.log('Listener status after stop (error):', statusAfter);
-        }
-  
-        await db2.close();
-  
         return {
           testName: "testListenerGetStatus",
           success: true,
-          message: "URLEndpointListener getStatus returned expected structure before, during, and after replication",
+          message: "Successfully tested URLEndpointListener getStatus",
           data: undefined,
         };
       } catch (error) {
@@ -246,14 +235,11 @@ async testP2PReplication(): Promise<ITestResult> {
    * Test replicating 50 documents from one database to another using a listener and a replicator.
    */
   async testReplicateFiftyDocuments(): Promise<ITestResult> {
-    const db1 = this.database;
-    const db2 = new Database(this.otherDatabaseName, db1.getConfig());
-    await db2.open();
     let listener: URLEndpointListener | undefined;
-    let replicator: any;
+    let replicator: Replicator | undefined;
     try {
-      const collection1 = await db1.defaultCollection();
-      const collection2 = await db2.defaultCollection();
+      const collection1 = await this.database.defaultCollection();
+      const collection2 = await this.otherDatabase.defaultCollection();
 
       // Add 50 documents to db1
       for (let i = 0; i < 50; i++) {
@@ -264,7 +250,7 @@ async testP2PReplication(): Promise<ITestResult> {
       // Start listener on db1
       listener = await URLEndpointListener.create({
         collections: [{
-          databaseName: db1.getUniqueName(),
+          databaseName: this.database.getUniqueName(),
           scopeName: '_default',
           name: '_default'
         }],
@@ -274,8 +260,8 @@ async testP2PReplication(): Promise<ITestResult> {
       await listener.start();
 
       // Setup and start replicator on db2
-      console.log(`Starting replicator to pull from ${db1.getName()}...`);
-      const endpointString = `wss://localhost:4988/${db1.getName()}`;
+      console.log(`Starting replicator to pull from ${this.database.getName()}...`);
+      const endpointString = `wss://localhost:4988/${this.database.getName()}`;
       const endpoint = new URLEndpoint(endpointString);
       const config = new ReplicatorConfiguration(endpoint);
       config.addCollection(collection2);
@@ -303,7 +289,6 @@ async testP2PReplication(): Promise<ITestResult> {
       // Cleanup
       await replicator.stop();
       await listener.stop();
-      await db2.close();
 
       return {
         testName: "testReplicateFiftyDocuments",
@@ -316,7 +301,6 @@ async testP2PReplication(): Promise<ITestResult> {
     } catch (error) {
       if (replicator) await replicator.stop().catch(() => {});
       if (listener) await listener.stop().catch(() => {});
-      await db2.close().catch(() => {});
       return {
         testName: "testReplicateFiftyDocuments",
         success: false,
@@ -330,14 +314,11 @@ async testP2PReplication(): Promise<ITestResult> {
    * Documents are created in db2 and pushed to db1.
    */
   async testPushFiftyDocuments(): Promise<ITestResult> {
-    const db1 = this.database;
-    const db2 = new Database(this.otherDatabaseName, db1.getConfig());
-    await db2.open();
     let listener: URLEndpointListener | undefined;
-    let replicator: any;
+    let replicator: Replicator | undefined;
     try {
-      const collection1 = await db1.defaultCollection();
-      const collection2 = await db2.defaultCollection();
+      const collection1 = await this.database.defaultCollection();
+      const collection2 = await this.otherDatabase.defaultCollection();
 
       // Add 50 documents to db2 (the active peer)
       for (let i = 0; i < 50; i++) {
@@ -348,7 +329,7 @@ async testP2PReplication(): Promise<ITestResult> {
       // Start listener on db1 (the passive peer)
       listener = await URLEndpointListener.create({
         collections: [{
-          databaseName: db1.getUniqueName(),
+          databaseName: this.database.getUniqueName(),
           scopeName: '_default',
           name: '_default'
         }],
@@ -358,7 +339,7 @@ async testP2PReplication(): Promise<ITestResult> {
       await listener.start();
 
       // Setup and start replicator on db2 (active peer, pushing to db1)
-      const endpointString = `wss://localhost:12348/${db1.getName()}`;
+      const endpointString = `wss://localhost:12348/${this.database.getName()}`;
       const endpoint = new URLEndpoint(endpointString);
       const config = new ReplicatorConfiguration(endpoint);
       config.addCollection(collection2);
@@ -386,7 +367,6 @@ async testP2PReplication(): Promise<ITestResult> {
       // Cleanup
       await replicator.stop();
       await listener.stop();
-      await db2.close();
 
       return {
         testName: "testPushFiftyDocuments",
@@ -399,7 +379,6 @@ async testP2PReplication(): Promise<ITestResult> {
     } catch (error) {
       if (replicator) await replicator.stop().catch(() => {});
       if (listener) await listener.stop().catch(() => {});
-      await db2.close().catch(() => {});
       return {
         testName: "testPushFiftyDocuments",
         success: false,
@@ -413,14 +392,11 @@ async testP2PReplication(): Promise<ITestResult> {
    * db1 and db2 each start with 50 unique docs, after replication both should have all 100 docs.
    */
   async testPushAndPullFiftyDocuments(): Promise<ITestResult> {
-    const db1 = this.database;
-    const db2 = new Database(this.otherDatabaseName, db1.getConfig());
-    await db2.open();
     let listener: URLEndpointListener | undefined;
-    let replicator: any;
+    let replicator: Replicator | undefined;
     try {
-      const collection1 = await db1.defaultCollection();
-      const collection2 = await db2.defaultCollection();
+      const collection1 = await this.database.defaultCollection();
+      const collection2 = await this.otherDatabase.defaultCollection();
 
       // Add 50 docs to db1
       for (let i = 0; i < 50; i++) {
@@ -436,7 +412,7 @@ async testP2PReplication(): Promise<ITestResult> {
       // Start listener on db1
       listener = await URLEndpointListener.create({
         collections: [{
-          databaseName: db1.getUniqueName(),
+          databaseName: this.database.getUniqueName(),
           scopeName: '_default',
           name: '_default'
         }],
@@ -446,7 +422,7 @@ async testP2PReplication(): Promise<ITestResult> {
       await listener.start();
 
       // Setup and start replicator on db2 (push and pull)
-      const endpointString = `wss://localhost:12349/${db1.getName()}`;
+      const endpointString = `wss://localhost:12349/${this.database.getName()}`;
       const endpoint = new URLEndpoint(endpointString);
       const config = new ReplicatorConfiguration(endpoint);
       config.addCollection(collection2);
@@ -485,7 +461,6 @@ async testP2PReplication(): Promise<ITestResult> {
       // Cleanup
       await replicator.stop();
       await listener.stop();
-      await db2.close();
 
       return {
         testName: "testPushAndPullFiftyDocuments",
@@ -498,7 +473,6 @@ async testP2PReplication(): Promise<ITestResult> {
     } catch (error) {
       if (replicator) await replicator.stop().catch(() => {});
       if (listener) await listener.stop().catch(() => {});
-      await db2.close().catch(() => {});
       return {
         testName: "testPushAndPullFiftyDocuments",
         success: false,
@@ -512,17 +486,14 @@ async testP2PReplication(): Promise<ITestResult> {
  * The listener requires username/password, and the replicator must provide them.
  */
 async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
-  const db1 = this.database;
-  const db2 = new Database(this.otherDatabaseName, this.database.getConfig());
-  await db2.open();
   let listener: URLEndpointListener | undefined;
   let replicator: Replicator | undefined;
   const USERNAME = "testuser";
   const PASSWORD = "testpass";
   try {
     // 1. Create/open two databases
-    const collection1 = await db1.defaultCollection();
-    const collection2 = await db2.defaultCollection();
+    const collection1 = await this.database.defaultCollection();
+    const collection2 = await this.otherDatabase.defaultCollection();
 
     // 2. Add a document to db1
     const doc1a = new MutableDocument('p2p_auth_doc1a', { value: 'authTest1a' });
@@ -531,7 +502,7 @@ async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
     // 3. Start Passive Peer (Listener) on db1 with basic auth required
     listener = await URLEndpointListener.create({
       collections: [{
-        databaseName: db1.getUniqueName(),
+        databaseName: this.database.getUniqueName(),
         scopeName: '_default',
         name: '_default'
       }],
@@ -548,7 +519,7 @@ async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
     await listener.start();
 
     // 4. Setup Active Peer (Replicator) on db2 with correct basic auth
-    const endpointString = `wss://localhost:4990/${db1.getName()}`;
+    const endpointString = `wss://localhost:4990/${this.database.getName()}`;
     const endpoint = new URLEndpoint(endpointString);
     const config = new ReplicatorConfiguration(endpoint);
     config.addCollection(collection2);
@@ -572,8 +543,6 @@ async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
     // Cleanup
     await replicator.stop();
     await listener.stop();
-    await db1.close();
-    await db2.close();
 
     return {
       testName: "testP2PReplicationWithBasicAuth",
@@ -584,7 +553,6 @@ async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
   } catch (error) {
     if (replicator) await replicator.stop().catch(() => {});
     if (listener) await listener.stop().catch(() => {});
-    await db2.close().catch(() => {});
     return {
       testName: "testP2PReplicationWithBasicAuth",
       success: false,
@@ -600,9 +568,6 @@ async testP2PReplicationWithBasicAuth(): Promise<ITestResult> {
  * This should fail as expected.
  */
 async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
-  const db1 = this.database;
-  const db2 = new Database(this.otherDatabaseName, this.database.getConfig());
-  await db2.open();
   let listener: URLEndpointListener | undefined;
   let replicator: Replicator | undefined;
   const CORRECT_USERNAME = "testuser";
@@ -611,8 +576,8 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
   const WRONG_PASSWORD = "wrongpass";
   try {
     // 1. Create/open two databases
-    const collection1 = await db1.defaultCollection();
-    const collection2 = await db2.defaultCollection();
+    const collection1 = await this.database.defaultCollection();
+    const collection2 = await this.otherDatabase.defaultCollection();
 
     // 2. Add a document to db1
     const doc1a = new MutableDocument('p2p_wrong_auth_doc1a', { value: 'wrongAuthTest1a' });
@@ -621,7 +586,7 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
     // 3. Start Passive Peer (Listener) on db1 with basic auth required
     listener = await URLEndpointListener.create({
       collections: [{
-        databaseName: db1.getUniqueName(),
+        databaseName: this.database.getUniqueName(),
         scopeName: '_default',
         name: '_default'
       }],
@@ -639,7 +604,7 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
     await this.sleep(1000);
 
     // 4. Setup Active Peer (Replicator) on db2 with incorrect basic auth
-    const endpointString = `wss://localhost:4991/${db1.getName()}`;
+    const endpointString = `wss://localhost:4991/${this.database.getName()}`;
     const endpoint = new URLEndpoint(endpointString);
     const config = new ReplicatorConfiguration(endpoint);
     config.addCollection(collection2);
@@ -682,8 +647,6 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
     // Cleanup
     await replicator.stop();
     await listener.stop();
-    await db1.close();
-    await db2.close();
 
     return {
       testName: "testP2PReplicationWithWrongBasicAuth",
@@ -694,7 +657,6 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
   } catch (error) {
     if (replicator) await replicator.stop().catch(() => {});
     if (listener) await listener.stop().catch(() => {});
-    await db2.close().catch(() => {});
     return {
       testName: "testP2PReplicationWithWrongBasicAuth",
       success: false,
