@@ -829,6 +829,62 @@ export class QueryTests extends TestCase {
     }
   }
 
+  async testQueryAddChangeListenerWithParameter(): Promise<ITestResult> {
+    try {
+      const expectedInitialCount = 10;
+      await this.createDocs('testQueryAddChangeListener', expectedInitialCount);
+
+      const query = this.database.createQuery(
+        'SELECT number FROM _ WHERE number <= $numberParam'
+      );
+      query.parameters.setInt('numberParam', 11)
+
+
+      let listenerCalls = 0;
+      let changeCount = 0;
+
+      const token = await query.addChangeListener((change) => {
+        listenerCalls++;
+
+        for (const result of change.results) {
+          changeCount++;
+        }
+      });
+
+      await this.sleep(100);
+
+      expect(listenerCalls).to.equal(1);
+      expect(changeCount).to.equal(expectedInitialCount);
+
+      const doc = this.createDocumentWithIdAndData('11', {
+        number: 11,
+      });
+      changeCount = 0;
+      await this.defaultCollection.save(doc);
+
+      await this.sleep(1000);
+
+      expect(listenerCalls).to.equal(2);
+      expect(changeCount).to.equal(expectedInitialCount + 1);
+
+      await query.removeChangeListener(token);
+
+      return {
+        testName: 'testQueryAddChangeListenerWithParameter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testQueryAddChangeListenerWithParameter',
+        success: false,
+        message: `Error: ${error.message}`,
+        data: undefined,
+      };
+    }
+  }
+
   async testLiveQueryNoUpdate(): Promise<ITestResult> {
     try {
       const query = this.database.createQuery('SELECT * FROM _');
