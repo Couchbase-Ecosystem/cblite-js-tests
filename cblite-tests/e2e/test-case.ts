@@ -21,6 +21,7 @@ export class TestCase {
   databaseName: string = "";
   databaseUniqueName: string = "";
   otherDatabaseName: string = "otherDb";
+  otherDatabaseUniqueName: string = "";
   scopeName: string = "testScope";
   collectionName: string = "testCollection";
   collection: Collection | undefined = undefined;
