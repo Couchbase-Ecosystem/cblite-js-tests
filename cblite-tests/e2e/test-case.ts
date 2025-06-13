@@ -229,7 +229,6 @@ export class TestCase {
   }
 
   async createDocs(
-    methodName: string,
     number: number
   ): Promise<MutableDocument[]> {
     try {
