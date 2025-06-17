@@ -12,6 +12,7 @@ import {
   DatabaseConfiguration,
   Database,
   MutableDocument,
+  ReplicatedDocumentFlag,
 } from 'cblite-js';
 import { expect } from 'chai';
 
@@ -70,7 +71,6 @@ export class ReplicatorTests extends TestCase {
             config.getContinuous() &&
             activityLevel == ReplicatorActivityLevel.IDLE
           ) {
-            this.sleep(500);
             if (
               status.getProgress().getCompleted() ==
               status.getProgress().getTotal()
@@ -806,18 +806,78 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testPullFilter(): Promise<ITestResult> {
-  //   return {
-  //     testName: 'testPullFilter',
-  //     success: false,
-  //     message: 'Not implemented',
-  //     data: undefined,
-  //   };
-  // }
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testPullFilter(): Promise<ITestResult> {
+    try {
+      const doc1Id = `test-doc-1-${Date.now()}`;
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: 'not-pull',
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc1);
+
+      const doc2Id = `test-doc-2-${Date.now()}`;
+      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
+        name: 'pull',
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc2);
+
+      const replPushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        false,
+        this.defaultCollection
+      );
+      await this.runReplication(replPushConfig);
+
+      this.defaultCollection.purgeById(doc1Id);
+      this.defaultCollection.purgeById(doc2Id);
+
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(await this.defaultCollection.getDocument(doc2Id)).to.be.undefined;
+
+      const collectionConfig = new CollectionConfig([], []);
+
+      collectionConfig.setPullFilter((doc) => {
+        'replicatorFilter';
+
+        return doc['name'] !== 'not-pull';
+      });
+
+      const replPullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(replPullConfig);
+
+      const replicatedDoc = await this.defaultCollection.getDocument(doc2Id);
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(replicatedDoc).to.not.be.undefined;
+      expect(replicatedDoc.getData().name).to.be.equal('pull');
+
+      return {
+        testName: 'testPullFilter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testPullFilter',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
 
   /**
    *
@@ -880,31 +940,216 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testPullRemovedDocWithFilterSingleShot(): Promise<ITestResult> {
-  //   return {
-  //     testName: 'testPullRemovedDocWithFilterSingleShot',
-  //     success: false,
-  //     message: 'Not implemented',
-  //     data: undefined,
-  //   };
-  // }
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testPullRemovedDocWithFilterSingleShot(): Promise<ITestResult> {
+    try {
+      const doc1Id = `doc1-${Date.now()}`;
+      const passDocId = `pass-${Date.now()}`;
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testPullRemovedDocWithFilterContinuous(): Promise<ITestResult> {
-  //   return {
-  //     testName: 'testPullRemovedDocWithFilterContinuous',
-  //     success: false,
-  //     message: 'Not implemented',
-  //     data: undefined,
-  //   };
-  // }
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: 'pass',
+        documentType: 'project',
+        team: 'team1',
+      });
+
+      const passDoc = this.createDocumentWithIdAndData(passDocId, {
+        name: 'pass',
+        documentType: 'project',
+        team: 'team1',
+      });
+
+      await this.defaultCollection.save(doc1);
+      await this.defaultCollection.save(passDoc);
+
+      const pushConfig = this.createConfig(ReplicatorType.PUSH, false);
+      await this.runReplication(pushConfig);
+
+      if (!this.otherDatabase) {
+        const databaseResult = await this.getDatabase(
+          this.otherDatabaseName,
+          this.directory,
+          ''
+        );
+        if (databaseResult instanceof Database) {
+          this.otherDatabase = databaseResult;
+          await this.otherDatabase.open();
+        }
+      }
+
+      const otherCollection = await this.otherDatabase.defaultCollection();
+
+      // Pull documents into other database
+      const otherConfig = this.createConfig(
+        ReplicatorType.PUSH_AND_PULL,
+        false,
+        otherCollection
+      );
+      await this.runReplication(otherConfig);
+
+      // Delete both documents in the other database
+      const otherDoc1 = await otherCollection.getDocument(doc1Id);
+      const otherPassDoc = await otherCollection.getDocument(passDocId);
+
+      await otherCollection.deleteDocument(otherDoc1);
+      await otherCollection.deleteDocument(otherPassDoc);
+
+      // Push deletions back to server
+      await this.runReplication(otherConfig);
+
+      const collectionConfig = new CollectionConfig(undefined, undefined);
+      collectionConfig.setPullFilter((doc, flags) => {
+        'replicatorFilter';
+
+        if (flags.includes(ReplicatedDocumentFlag.DELETED)) {
+          // For deletions, only allow those with "pass" in the ID
+          return doc['id'].includes('pass');
+        }
+        // For regular documents, allow all with name "pass"
+        return doc['name'] === 'pass';
+      });
+
+      // Pull with filter to test deletion handling
+      const pullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+      await this.runReplication(pullConfig);
+
+      // Try to get documents locally after filtered pull
+      const localDoc1 = await this.defaultCollection.getDocument(doc1Id);
+      const localPassDoc = await this.defaultCollection.getDocument(passDocId);
+
+      // - doc1 should still exist
+      // - passDoc should be deleted
+      expect(localPassDoc).to.be.undefined;
+
+      return {
+        testName: 'testPullRemovedDocWithFilterSingleShot',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testPullRemovedDocWithFilterSingleShot',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testPullRemovedDocWithFilterContinuous(): Promise<ITestResult> {
+    try {
+      const doc1Id = `doc1-${Date.now()}`;
+      const passDocId = `pass-${Date.now()}`;
+
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: 'pass',
+        documentType: 'project',
+        team: 'team1',
+      });
+
+      const passDoc = this.createDocumentWithIdAndData(passDocId, {
+        name: 'pass',
+        documentType: 'project',
+        team: 'team1',
+      });
+
+      await this.defaultCollection.save(doc1);
+      await this.defaultCollection.save(passDoc);
+
+      const pushConfig = this.createConfig(ReplicatorType.PUSH, true);
+      await this.runReplication(pushConfig);
+
+      if (!this.otherDatabase) {
+        const databaseResult = await this.getDatabase(
+          this.otherDatabaseName,
+          this.directory,
+          ''
+        );
+        if (databaseResult instanceof Database) {
+          this.otherDatabase = databaseResult;
+          await this.otherDatabase.open();
+        }
+      }
+
+      const otherCollection = await this.otherDatabase.defaultCollection();
+
+      // Pull documents into other database
+      const otherConfig = this.createConfig(
+        ReplicatorType.PUSH_AND_PULL,
+        false,
+        otherCollection
+      );
+      await this.runReplication(otherConfig);
+
+      // Delete both documents in the other database
+      const otherDoc1 = await otherCollection.getDocument(doc1Id);
+      const otherPassDoc = await otherCollection.getDocument(passDocId);
+
+      await otherCollection.deleteDocument(otherDoc1);
+      await otherCollection.deleteDocument(otherPassDoc);
+
+      // Push deletions back to server
+      await this.runReplication(otherConfig);
+
+      const collectionConfig = new CollectionConfig(undefined, undefined);
+      collectionConfig.setPullFilter((doc, flags) => {
+        'replicatorFilter';
+        const isDeleted = flags.includes(ReplicatedDocumentFlag.DELETED);
+
+        if (isDeleted) {
+          // For deletions, only allow those with "pass" in the ID
+          return doc['id'].includes('pass');
+        }
+
+        // For regular documents, allow all with name "pass"
+        return doc['name'] === 'pass';
+      });
+
+      // Pull with filter to test deletion handling
+      const pullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+      await this.runReplication(pullConfig);
+
+      // Try to get documents locally after filtered pull
+      const localDoc1 = await this.defaultCollection.getDocument(doc1Id);
+      const localPassDoc = await this.defaultCollection.getDocument(passDocId);
+
+      // - doc1 should still exist (deletion rejected by filter)
+      expect(localDoc1).to.not.be.undefined;
+      // - passDoc should be deleted (deletion allowed by filter)
+      expect(localPassDoc).to.be.undefined;
+
+      return {
+        testName: 'testPullRemovedDocWithFilterContinuous',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testPullRemovedDocWithFilterContinuous',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
 
   /**
    *
@@ -983,18 +1228,108 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testStopAndRestartPullReplicationWithFilter(): Promise<ITestResult> {
-  //   return {
-  //     testName: "testStopAndRestartPullReplicationWithFilter",
-  //     success: false,
-  //     message: "Not implemented",
-  //     data: undefined,
-  //   };
-  // }
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testStopAndRestartPullReplicationWithFilter(): Promise<ITestResult> {
+    try {
+      if (!this.otherDatabase) {
+        const databaseResult = await this.getDatabase(
+          this.otherDatabaseName,
+          this.directory,
+          ''
+        );
+        if (databaseResult instanceof Database) {
+          this.otherDatabase = databaseResult;
+          await this.otherDatabase.open();
+        }
+      }
+
+      const otherCollection = await this.otherDatabase.defaultCollection();
+
+      const doc1Id = 'doc1';
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: 'pass',
+      });
+      await otherCollection.save(doc1);
+
+      const pushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        true,
+        otherCollection
+      );
+
+      await this.runReplication(pushConfig);
+
+      // Create collection config with pull filter
+      const collectionConfig = new CollectionConfig(undefined, undefined);
+      collectionConfig.setPullFilter((doc, flags) => {
+        'replicatorFilter';
+
+        return doc['name'] === 'pass';
+      });
+
+      // Create continuous pull replicator
+      const pullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        true,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(pushConfig);
+
+      await this.runReplication(pullConfig);
+
+      expect((await this.defaultCollection.count()).count).to.equal(1);
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.not
+        .undefined;
+
+      const doc2Id = 'doc2';
+      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
+        name: 'pass',
+      });
+      await otherCollection.save(doc2);
+
+      const doc3Id = 'doc3';
+      const doc3 = this.createDocumentWithIdAndData(doc3Id, {
+        name: 'donotpass',
+      });
+      await otherCollection.save(doc3);
+
+      await this.runReplication(pushConfig);
+
+      await this.runReplication(pullConfig);
+
+      expect((await this.defaultCollection.count()).count).to.equal(2);
+
+      const localDoc1Final = await this.defaultCollection.getDocument(doc1Id);
+      const localDoc2Final = await this.defaultCollection.getDocument(doc2Id);
+      const localDoc3Final = await this.defaultCollection.getDocument(doc3Id);
+
+      expect(localDoc1Final).to.not.be.undefined;
+      expect(localDoc2Final).to.not.be.undefined;
+      expect(localDoc3Final).to.be.undefined;
+
+      expect((await otherCollection.count()).count).to.equal(3);
+      expect((await this.defaultCollection.count()).count).to.equal(2);
+
+      return {
+        testName: 'testStopAndRestartPullReplicationWithFilter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testStopAndRestartPullReplicationWithFilter',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
 
   /**
    *
@@ -1476,7 +1811,78 @@ export class ReplicatorTests extends TestCase {
       };
     } catch (error) {
       return {
-        testName: 'testFilterPerformance',
+        testName: 'testFilterPushPerformance',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testFilterPullPerformance(): Promise<ITestResult> {
+    const count = 100;
+    try {
+      const prepareDocuments = async (count: number, prefix: string) => {
+        const savedDocIds: string[] = [];
+        for (let i = 0; i < count; i++) {
+          const docId = `${prefix}_doc_${i}_${Date.now()}`;
+          const docData = {
+            type: i % 3 === 0 ? 'type1' : i % 3 === 1 ? 'type2' : 'type3',
+            name: `Document ${i}`,
+            documentType: 'project',
+            team: 'team1',
+          };
+
+          const mutableDoc = this.createDocumentWithIdAndData(docId, docData);
+          await this.defaultCollection.save(mutableDoc);
+          savedDocIds.push(docId);
+        }
+        return savedDocIds;
+      };
+
+      // Purge documents using their IDs
+      const purgeDocuments = async (docIds: string[]) => {
+        for (const id of docIds) {
+          await this.defaultCollection.purgeById(id);
+        }
+      };
+
+      const docIds = await prepareDocuments(count, 'test');
+      const pushConfig = this.createConfig(ReplicatorType.PUSH, false);
+
+      await this.runReplication(pushConfig);
+
+      await purgeDocuments(docIds);
+
+      const collConfig = new CollectionConfig(undefined, undefined);
+      collConfig.setPullFilter((doc, flags) => {
+        'replicatorFilter';
+        return doc['type'] === 'type1';
+      });
+
+      const startTime = Date.now();
+      const replConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collConfig
+      );
+      await this.runReplication(replConfig);
+      const duration = Date.now() - startTime;
+
+      return {
+        testName: 'testFilterPullPerformance',
+        success: true,
+        message: `Filter performance test completed successfully: docs ${count} - time ${duration} ms`,
+        data: duration.toString(),
+      };
+    } catch (error) {
+      return {
+        testName: 'testFilterPullPerformance',
         success: false,
         message: `${error}`,
         data: error.stack || error.toString(),
