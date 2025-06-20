@@ -710,7 +710,7 @@ async testP2PReplicationWithSelfSignedCertRejected(): Promise<ITestResult> {
     replicator = await Replicator.create(config);
     
     // Add change listener to capture the error
-    let replicationError: any = null;
+    let replicationError: string | null = null;
     const token = await replicator.addChangeListener((change) => {
       const error = change.status.getError();
       if (error) {
