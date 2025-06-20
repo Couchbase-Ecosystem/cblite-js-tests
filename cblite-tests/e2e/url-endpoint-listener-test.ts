@@ -74,7 +74,6 @@ async testP2PReplication(): Promise<ITestResult> {
     const config = new ReplicatorConfiguration(endpoint);
     config.addCollection(collection2);
     config.setReplicatorType(ReplicatorType.PULL);
-    config.setAcceptOnlySelfSignedCerts(true);
     config.setContinuous(false);
 
     replicator = await Replicator.create(config);
@@ -664,5 +663,84 @@ async testP2PReplicationWithWrongBasicAuth(): Promise<ITestResult> {
       data: error.stack || error.toString(),
     };
   }
+}
+
+/**
+ * Tests P2P replication with self-signed certificate where client rejects it
+ * This should fail because the client is configured to not accept self-signed certs
+ */
+async testP2PReplicationWithSelfSignedCertRejected(): Promise<ITestResult> {
+  let listener: URLEndpointListener | undefined;
+  let replicator: Replicator | undefined;
+  try {
+    // 1. Create/open two databases
+    const collection1 = await this.database.defaultCollection();
+    const collection2 = await this.otherDatabase.defaultCollection();
+
+    // 2. Add a test document to db1
+    const doc1a = new MutableDocument('p2p_doc1a', { value: 'test1a' });
+    await collection1.save(doc1a);
+
+    // 3. Start Passive Peer (Listener) on db1 with self-signed cert
+    listener = await URLEndpointListener.create({
+      collections: [{
+        databaseName: this.database.getUniqueName(),
+        scopeName: '_default',
+        name: '_default'
+      }],
+      port: 4989,
+      networkInterface: '0.0.0.0',
+      tlsIdentityConfig: {
+        attributes: {
+          certAttrCommonName: 'localhost'
+        }
+      }
+    });
+    await listener.start();
+
+    // 4. Setup Active Peer (Replicator) on db2 that rejects self-signed certs
+    const endpointString = `wss://localhost:4989/${this.database.getName()}`;
+    const endpoint = new URLEndpoint(endpointString);
+    const config = new ReplicatorConfiguration(endpoint);
+    config.addCollection(collection2);
+    config.setReplicatorType(ReplicatorType.PULL);
+    config.setContinuous(false);
+    config.setAcceptOnlySelfSignedCerts(false); // Explicitly reject self-signed certs
+
+    replicator = await Replicator.create(config);
+    
+    // Add change listener to capture the error
+    let replicationError: any = null;
+    const token = await replicator.addChangeListener((change) => {
+      const error = change.status.getError();
+      if (error) {
+        replicationError = error;
+      }
+    });
+
+    await replicator.start(false);
+    await this.sleep(2000); // Wait for replication attempt
+
+    // Verify that replication failed due to certificate error
+    expect(replicationError).to.not.be.null;
+    console.log('replicationError: ', replicationError);
+    // Verify document was not replicated
+    const doc1b = await collection2.document('p2p_doc1a');
+    expect(doc1b).to.be.undefined;
+
+    return {
+      testName: 'testP2PReplicationWithSelfSignedCertRejected',
+      success: true,
+      data: undefined,
+      message: 'Successfully verified that self-signed certificate was rejected'
+    };
+  } catch (error) {
+    return {
+      testName: 'testP2PReplicationWithSelfSignedCertRejected',
+      success: false,
+      data: undefined,
+      message: `Test failed with error: ${error}`
+    };
+  } 
 }
 }
