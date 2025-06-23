@@ -883,6 +883,137 @@ export class ReplicatorTests extends TestCase {
    *
    * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
    */
+  async testPullFilterWithNestedObjects(): Promise<ITestResult> {
+    try {
+      const doc1Id = `test-doc-1-${Date.now()}`;
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        prop1: { prop2: { prop3: 'not-pull' } },
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc1);
+
+      const doc2Id = `test-doc-2-${Date.now()}`;
+      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
+        prop1: { prop2: { prop3: 'pull' } },
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc2);
+
+      const replPushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        false,
+        this.defaultCollection
+      );
+      await this.runReplication(replPushConfig);
+
+      this.defaultCollection.purgeById(doc1Id);
+      this.defaultCollection.purgeById(doc2Id);
+
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(await this.defaultCollection.getDocument(doc2Id)).to.be.undefined;
+
+      const collectionConfig = new CollectionConfig([], []);
+
+      collectionConfig.setPullFilter((doc) => {
+        'replicatorFilter';
+
+        return doc?.['prop1']?.['prop2']?.['prop3'] !== 'not-pull';
+      });
+
+      const replPullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(replPullConfig);
+
+      const replicatedDoc = await this.defaultCollection.getDocument(doc2Id);
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(replicatedDoc).to.not.be.undefined;
+      expect(replicatedDoc.getData().prop1.prop2.prop3).to.be.equal('pull');
+
+      return {
+        testName: 'testPullFilterWithNestedObjects',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testPullFilterWithNestedObjects',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  async testPushFilterWithNestedObj(): Promise<ITestResult> {
+    try {
+      const doc1 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
+        prop1: { prop2: [true] },
+      });
+      await this.defaultCollection.save(doc1);
+
+      const doc2 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
+        prop1: { prop2: [false] },
+      });
+      await this.defaultCollection.save(doc2);
+
+      const collectionConfig = new CollectionConfig([], []);
+
+      collectionConfig.setPushFilter(function (document, flags) {
+        'replicatorFilter';
+
+        return document?.['prop1']?.['prop2']?.some(Boolean);
+      });
+
+      const pushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(pushConfig);
+
+      await this.defaultCollection.purge(doc1);
+      await this.defaultCollection.purge(doc2);
+
+      const pullConfig = this.createConfig(ReplicatorType.PULL, false);
+
+      await this.runReplication(pullConfig);
+
+      const localDoc1 = await this.defaultCollection.document(doc1.getId());
+      const localDoc2 = await this.defaultCollection.document(doc2.getId());
+
+      expect(localDoc1).to.not.be.undefined;
+      expect(localDoc2).to.be.undefined;
+
+      return {
+        testName: 'testPushFilterWithNestedObj',
+        success: true,
+        message: 'success',
+        data: null,
+      };
+    } catch (error) {
+      return {
+        testName: 'testPushFilterWithNestedObj',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
   async testPushAndForget(): Promise<ITestResult> {
     try {
       const docId = `forget-${Date.now()}`;
@@ -1002,7 +1133,6 @@ export class ReplicatorTests extends TestCase {
       const collectionConfig = new CollectionConfig(undefined, undefined);
       collectionConfig.setPullFilter((doc, flags) => {
         'replicatorFilter';
-
         if (flags.includes(ReplicatedDocumentFlag.DELETED)) {
           // For deletions, only allow those with "pass" in the ID
           return doc['id'].includes('pass');
@@ -1026,6 +1156,7 @@ export class ReplicatorTests extends TestCase {
 
       // - doc1 should still exist
       // - passDoc should be deleted
+      expect(localDoc1).to.not.be.undefined;
       expect(localPassDoc).to.be.undefined;
 
       return {
