@@ -735,6 +735,8 @@ async testP2PReplicationWithSelfSignedCertRejected(): Promise<ITestResult> {
       message: 'Successfully verified that self-signed certificate was rejected'
     };
   } catch (error) {
+    if (replicator) await replicator.stop().catch(() => {});
+    if (listener) await listener.stop().catch(() => {});
     return {
       testName: 'testP2PReplicationWithSelfSignedCertRejected',
       success: false,
