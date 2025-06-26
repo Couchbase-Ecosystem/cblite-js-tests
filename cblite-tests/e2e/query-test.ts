@@ -778,7 +778,7 @@ export class QueryTests extends TestCase {
   async testQueryAddChangeListener(): Promise<ITestResult> {
     try {
       const expectedInitialCount = 10;
-      await this.createDocs('testQueryAddChangeListener', expectedInitialCount);
+      await this.createDocs(expectedInitialCount);
 
       const query = this.database.createQuery(
         'SELECT number FROM _ WHERE number <= 11'
@@ -832,7 +832,7 @@ export class QueryTests extends TestCase {
   async testQueryAddChangeListenerWithParameter(): Promise<ITestResult> {
     try {
       const expectedInitialCount = 10;
-      await this.createDocs('testQueryAddChangeListener', expectedInitialCount);
+      await this.createDocs(expectedInitialCount);
 
       const query = this.database.createQuery(
         'SELECT number FROM _ WHERE number <= $numberParam'
@@ -933,7 +933,7 @@ export class QueryTests extends TestCase {
 
   async testLiveQueryReturnsEmptyResultSet(): Promise<ITestResult> {
     try {
-      await this.createDocs('testLiveQueryReturnsEmptyResultSet', 100);
+      await this.createDocs(100);
 
       const query = this.database.createQuery(
         'SELECT number FROM _ WHERE number < 10 ORDER BY number'

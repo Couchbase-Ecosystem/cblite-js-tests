@@ -1612,7 +1612,7 @@ export class ReplicatorTests extends TestCase {
       config.setAcceptParentDomainCookies(true);
 
       // Set pinnedServerCertificate
-      const certificateData = 'MOCK_CERTIFICATE_DATA';
+      const certificateData = "";
       config.setPinnedServerCertificate(certificateData);
 
       // Create a collection configuration with channels and document IDs
@@ -1763,7 +1763,7 @@ export class ReplicatorTests extends TestCase {
       config.setAcceptParentDomainCookies(true);
 
       // Set a mock certificate
-      const mockCertificate = 'MOCK_CERTIFICATE_DATA';
+      const mockCertificate = "";
       config.setPinnedServerCertificate(mockCertificate);
 
       // Configure collection
@@ -1792,7 +1792,7 @@ export class ReplicatorTests extends TestCase {
       expect(config.getHeartbeat()).to.equal(120);
       expect(config.getMaxAttempts()).to.equal(5);
       expect(config.getMaxAttemptWaitTime()).to.equal(180);
-      expect(config.getPinnedServerCertificate()).to.equal(mockCertificate);
+      expect(config.getPinnedServerCertificate()).to.equal("");
       expect(config.getAcceptOnlySelfSignedCerts()).to.be.true;
       expect(config.getAllowReplicatingInBackground()).to.be.true;
       expect(config.getAutoPurgeEnabled()).to.be.false;
@@ -1833,7 +1833,7 @@ export class ReplicatorTests extends TestCase {
       expect(replicatorConfig.getMaxAttempts()).to.equal(5);
       expect(replicatorConfig.getMaxAttemptWaitTime()).to.equal(180);
       expect(replicatorConfig.getPinnedServerCertificate()).to.equal(
-        mockCertificate
+        ""
       );
       expect(replicatorConfig.getAcceptOnlySelfSignedCerts()).to.be.true;
       expect(replicatorConfig.getAllowReplicatingInBackground()).to.be.true;
