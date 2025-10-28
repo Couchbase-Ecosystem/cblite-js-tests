@@ -141,27 +141,27 @@ export class CollectionTests extends TestCase {
     try {
       // 3.1 TestGetFullNameFromDefaultCollection
       const defaultCollection = await this.database?.defaultCollection();
-      expect(defaultCollection.fullName()).to.equal('_default._default');
+      expect(await defaultCollection.fullName()).to.equal('_default._default');
 
       // 3.2 TestGetFullNameFromNewCollectionInDefaultScope
       const col2 = await this.database?.createCollection('colA');
       expect(col2).to.not.be.null;
-      expect(col2.fullName()).to.equal('_default.colA');
+      expect(await col2.fullName()).to.equal('_default.colA');
 
       // 3.3 TestGetFullNameFromNewCollectionInCustomScope
       const col3 = await this.database?.createCollection('colA', 'scopeA');
       expect(col3).to.not.be.null;
-      expect(col3.fullName()).to.equal('scopeA.colA');
+      expect(await col3.fullName()).to.equal('scopeA.colA');
 
       // 3.4 TestGetFullNameFromExistingCollectionInDefaultScope
       const col4 = await this.database?.collection('colA');
       expect(col4).to.not.be.null;
-      expect(col4.fullName()).to.equal('_default.colA');
+      expect(await col4.fullName()).to.equal('_default.colA');
 
       // 3.5 TestGetFullNameFromNewCollectionInCustomScope
       const col5 = await this.database?.collection('colA', 'scopeA');
       expect(col5).to.not.be.null;
-      expect(col5.fullName()).to.equal('scopeA.colA');
+      expect(await col5.fullName()).to.equal('scopeA.colA');
 
       return {
         testName: 'testCollectionFullName',

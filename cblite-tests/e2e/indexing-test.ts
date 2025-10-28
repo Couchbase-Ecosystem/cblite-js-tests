@@ -81,7 +81,8 @@ export class IndexingTests extends TestCase {
 
       //search the database for the term eiusmod
 
-      const queryString = `SELECT * FROM ${this.collection.fullName()} WHERE MATCH(${indexName}, 'eiusmod')`;
+      const collectionFullName = await this.collection.fullName();
+      const queryString = `SELECT * FROM ${collectionFullName} WHERE MATCH(${indexName}, 'eiusmod')`;
       const query = this.database.createQuery(queryString);
       const results = await query.execute();
 
