@@ -1613,16 +1613,22 @@ async testRemoveListenerDuringActiveChanges(): Promise<ITestResult> {
 /**
  * Test listener token after database close
  * 
- * Verifies behavior when trying to remove a listener after database is closed.
+ * Verifies that removing a listener after database is closed either:
+ * 1. Succeeds gracefully (preferred), OR
+ * 2. Throws an appropriate error (acceptable)
+ * 
+ * Both behaviors are acceptable as the database is already closed.
+ * The test fails only if an unexpected error occurs during setup.
  * 
  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object
  */
 async testListenerTokenAfterDatabaseClose(): Promise<ITestResult> {
+  const testDbName = 'testListenerAfterClose';
+  
   try {
     // Create a separate database for this test
-    const testDbName = 'testListenerAfterClose';
     const config = new DatabaseConfiguration();
-    config.directory = this.directory; // Use the test directory
+    config.directory = this.directory;
     const testDb = new Database(testDbName, config);
     await testDb.open();
 
@@ -1633,7 +1639,7 @@ async testListenerTokenAfterDatabaseClose(): Promise<ITestResult> {
       changeCount++;
     });
 
-    // Create a document
+    // Create a document to trigger the listener
     const doc = new MutableDocument('test-doc');
     doc.setString('name', 'test');
     await collection.save(doc);
@@ -1646,39 +1652,42 @@ async testListenerTokenAfterDatabaseClose(): Promise<ITestResult> {
     await testDb.close();
 
     // Try to remove the listener after database is closed
+    // Both success and error are acceptable outcomes
+    let removalResult: 'success' | 'error' = 'success';
+    let errorMessage = '';
+    
     try {
       await token.remove();
-      
-      // If we get here, removal was handled gracefully
-      // Cleanup: delete the test database
-      await Database.deleteDatabase(testDbName, this.directory);
-      
-      return {
-        testName: 'testListenerTokenAfterDatabaseClose',
-        success: true,
-        message: 'SUCCESS: Listener removal after database close handled gracefully',
-        data: undefined,
-      };
+      removalResult = 'success';
     } catch (error) {
-      // It's acceptable to throw an error when database is closed
-      // Cleanup: delete the test database
-      try {
-        await Database.deleteDatabase(testDbName, this.directory);
-      } catch (cleanupError) {
-        console.log('Cleanup error (expected):', cleanupError);
-      }
-      
-      return {
-        testName: 'testListenerTokenAfterDatabaseClose',
-        success: true,
-        message: `SUCCESS: Listener removal after database close throws expected error: ${error}`,
-        data: undefined,
-      };
+      removalResult = 'error';
+      errorMessage = String(error);
     }
+
+    // Cleanup: delete the test database
+    try {
+      await Database.deleteDatabase(testDbName, this.directory);
+    } catch (cleanupError) {
+      console.log('Cleanup error (expected after close):', cleanupError);
+    }
+    
+    // Both outcomes are acceptable
+    const message = removalResult === 'success'
+      ? 'SUCCESS: Listener removal after database close handled gracefully (no error thrown)'
+      : `SUCCESS: Listener removal after database close threw expected error: ${errorMessage}`;
+    
+    return {
+      testName: 'testListenerTokenAfterDatabaseClose',
+      success: true,
+      message,
+      data: removalResult === 'error' ? errorMessage : undefined,
+    };
+    
   } catch (error) {
+    // This catches unexpected errors during test setup (before database close)
     // Try to cleanup even if test fails
     try {
-      await Database.deleteDatabase('testListenerAfterClose', this.directory);
+      await Database.deleteDatabase(testDbName, this.directory);
     } catch (cleanupError) {
       // Ignore cleanup errors
     }
@@ -1686,7 +1695,7 @@ async testListenerTokenAfterDatabaseClose(): Promise<ITestResult> {
     return {
       testName: 'testListenerTokenAfterDatabaseClose',
       success: false,
-      message: `FAILED: Unexpected error: ${error}`,
+      message: `FAILED: Unexpected error during test setup: ${error}`,
       data: undefined,
     };
   }
