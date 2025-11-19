@@ -1233,23 +1233,15 @@ async testMultipleListenersIndependentRemoval(): Promise<ITestResult> {
     // Add one listener per collection
     const token1 = await collection1.addChangeListener((change) => {
       listener1Count++;
-      console.log('Listener 1 fired');
     });
 
     const token2 = await collection2.addChangeListener((change) => {
       listener2Count++;
-      console.log('Listener 2 fired');
     });
 
     const token3 = await collection3.addChangeListener((change) => {
       listener3Count++;
-      console.log('Listener 3 fired');
     });
-
-    console.log("token1", token1);
-    console.log("token2", token2);
-    console.log("token3", token3);
-
 
     
 
