@@ -31,13 +31,13 @@ export class ReplicatorNewApiTests extends TestCase {
     super();
   }
 
-  platformDomains = {
+  platformDomains: Record<string, string> = {
     ios: 'localhost',
     android: '10.0.2.2',
   };
 
-  private readonly SYNC_GATEWAY_URL = `ws://${this.platformDomains?.[this.platform] ?? 'WRONG PLATFORM'}:4984/projects`;
-  private readonly SYNC_GATEWAY_WRONG_URL = `ws://${this.platformDomains?.[this.platform] ?? 'WRONG PLATFORM'}:4984/unknown-db`;
+  private readonly SYNC_GATEWAY_URL = `ws://${this.platformDomains?.[this.platform as string] ?? 'WRONG PLATFORM'}:4984/projects`;
+  private readonly SYNC_GATEWAY_WRONG_URL = `ws://${this.platformDomains?.[this.platform as string] ?? 'WRONG PLATFORM'}:4984/unknown-db`;
   private readonly TEST_USERNAME = 'demo@example.com';
   private readonly TEST_PASSWORD = 'P@ssw0rd12';
 
@@ -86,10 +86,10 @@ export class ReplicatorNewApiTests extends TestCase {
   ): Promise<void> {
     const replicator = await Replicator.create(config);
 
-    let listenerToken: string;
+    let listenerToken: string | undefined;
     const completionPromise = new Promise<void>((resolve, reject) => {
       replicator
-        .addChangeListener((change) => {
+        .addChangeListener((change: any) => {
           const status = change.status;
           const activityLevel = status.getActivityLevel();
 
@@ -113,9 +113,10 @@ export class ReplicatorNewApiTests extends TestCase {
             }
           }
         })
-        .then((token) => {
+        .then((token: string) => {
           listenerToken = token;
-        });
+        })
+        .catch(reject);
     });
 
     try {
@@ -124,7 +125,9 @@ export class ReplicatorNewApiTests extends TestCase {
     } catch (e) {
       console.error(e);
     } finally {
-      await replicator.removeChangeListener(listenerToken);
+      if (listenerToken) {
+        await replicator.removeChangeListener(listenerToken);
+      }
       replicator.stop();
     }
   }
@@ -207,7 +210,7 @@ export class ReplicatorNewApiTests extends TestCase {
       let didGetChangeStatus = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addChangeListener((change) => {
+      const token = await replicator.addChangeListener((change: any) => {
         // Check to see if there was an error
         const error = change.status.getError();
         if (error !== undefined) {
@@ -263,7 +266,7 @@ export class ReplicatorNewApiTests extends TestCase {
       let didGetDocumentUpdate = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addDocumentChangeListener((change) => {
+      const token = await replicator.addDocumentChangeListener((change: any) => {
         // Check to see if the documents were pushed or pulled
         for (const doc of change.documents) {
           if (doc.error !== undefined) {
@@ -324,7 +327,7 @@ export class ReplicatorNewApiTests extends TestCase {
       const replicatorCompletionPromise = new Promise<void>(
         (resolve, reject) => {
           replicator
-            .addChangeListener((change) => {
+            .addChangeListener((change: any) => {
               const status = change.status;
               const activityLevel = status.getActivityLevel();
 
@@ -338,7 +341,7 @@ export class ReplicatorNewApiTests extends TestCase {
                 }
               }
             })
-            .then((token) => {
+            .then((token: string) => {
               listenerToken = token;
             });
         }
@@ -409,7 +412,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with pull filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc) => {
+        .setPullFilter((doc: any) => {
           'replicatorFilter';
           return doc['name'] !== 'not-pull';
         });
@@ -435,7 +438,7 @@ export class ReplicatorNewApiTests extends TestCase {
         message: 'success',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPullFilter',
         success: false,
@@ -500,7 +503,7 @@ export class ReplicatorNewApiTests extends TestCase {
         message: 'Successfully verified checkpoint reset behavior',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testStartWithCheckpoint',
         success: false,
@@ -565,7 +568,7 @@ export class ReplicatorNewApiTests extends TestCase {
           'Successfully verified checkpoint reset behavior with continuous replication',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testStartWithResetCheckpointContinuous',
         success: false,
@@ -588,7 +591,7 @@ export class ReplicatorNewApiTests extends TestCase {
       let didGetDocumentUpdate = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addDocumentChangeListener((change) => {
+      const token = await replicator.addDocumentChangeListener((change: any) => {
         // Check to see if the documents were pushed or pulled
         for (const doc of change.documents) {
           if (doc.error !== undefined) {
@@ -611,7 +614,7 @@ export class ReplicatorNewApiTests extends TestCase {
       expect(count.count).to.be.greaterThan(0);
 
       // Try to remove already removed listener
-      let error;
+      let error: any;
       try {
         await replicator.removeChangeListener(token);
       } catch (err) {
@@ -715,7 +718,7 @@ export class ReplicatorNewApiTests extends TestCase {
       let conflictDoc: any = null;
 
       const docChangePromise = new Promise<void>((resolve) => {
-        replicator.addDocumentChangeListener((change) => {
+        replicator.addDocumentChangeListener((change: any) => {
           if (!change.isPush) {
             for (const doc of change.documents) {
               if (doc.id === docId) {
@@ -854,7 +857,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with push filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPushFilter((doc, flags) => {
+        .setPushFilter((doc: any, flags: any) => {
           'replicatorFilter';
           return Boolean(doc['number'] % 3);
         });
@@ -909,7 +912,7 @@ export class ReplicatorNewApiTests extends TestCase {
         testName: 'testContinuousPushFilter',
         success: true,
         message: `success`,
-        data: null,
+        data: undefined,
       };
     } catch (error: any) {
       return {
@@ -960,7 +963,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with nested object filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc) => {
+        .setPullFilter((doc: any) => {
           'replicatorFilter';
           return doc?.['prop1']?.['prop2']?.['prop3'] !== 'not-pull';
         });
@@ -1015,7 +1018,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with nested object filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPushFilter(function (document, flags) {
+        .setPushFilter(function (document: any, flags: any) {
           'replicatorFilter';
           return document?.['prop1']?.['prop2']?.some(Boolean);
         });
@@ -1046,7 +1049,7 @@ export class ReplicatorNewApiTests extends TestCase {
         testName: 'testPushFilterWithNestedObj',
         success: true,
         message: 'success',
-        data: null,
+        data: undefined,
       };
     } catch (error: any) {
       return {
@@ -1114,7 +1117,7 @@ export class ReplicatorNewApiTests extends TestCase {
         testName: 'testPushAndForget',
         success: true,
         message: `success`,
-        data: null,
+        data: undefined,
       };
     } catch (error: any) {
       return {
@@ -1189,7 +1192,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with deletion filter
       const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc, flags) => {
+        .setPullFilter((doc: any, flags: any) => {
           'replicatorFilter';
           if (flags.includes(ReplicatedDocumentFlag.DELETED)) {
             // For deletions, only allow those with "pass" in the ID
@@ -1295,7 +1298,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with deletion filter
       const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc, flags) => {
+        .setPullFilter((doc: any, flags: any) => {
           'replicatorFilter';
           const isDeleted = flags.includes(ReplicatedDocumentFlag.DELETED);
 
@@ -1357,7 +1360,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with push filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPushFilter(function (document, flags) {
+        .setPushFilter(function (document: any, flags: any) {
           'replicatorFilter';
           return document['name'].includes('push-pass');
         });
@@ -1407,7 +1410,7 @@ export class ReplicatorNewApiTests extends TestCase {
         testName: 'testStopAndRestartPushReplicationWithFilter',
         success: true,
         message: 'success',
-        data: null,
+        data: undefined,
       };
     } catch (error: any) {
       return {
@@ -1465,7 +1468,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with pull filter
       const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc, flags) => {
+        .setPullFilter((doc: any, flags: any) => {
           'replicatorFilter';
           return doc['name'] === 'pass';
         });
@@ -1627,7 +1630,7 @@ export class ReplicatorNewApiTests extends TestCase {
       let activityLevels: ReplicatorActivityLevel[] = [];
 
       // Add a listener before starting replication
-      const token = await replicator.addChangeListener((change) => {
+      const token = await replicator.addChangeListener((change: any) => {
         activityLevels.push(change.status.getActivityLevel());
       });
 
@@ -1981,7 +1984,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with push filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPushFilter((doc, flags) => {
+        .setPushFilter((doc: any, flags: any) => {
           'replicatorFilter';
           return Boolean(doc['number'] % 2);
         });
@@ -2022,7 +2025,7 @@ export class ReplicatorNewApiTests extends TestCase {
         testName: 'testFilterPushPerformance',
         success: true,
         message: `Filter performance test completed successfully: docs ${docCount} - time ${duration} ms`,
-        data: null,
+        data: undefined,
       };
     } catch (error: any) {
       return {
@@ -2077,7 +2080,7 @@ export class ReplicatorNewApiTests extends TestCase {
 
       // NEW API: Create CollectionConfiguration with pull filter
       const collectionConfig = new CollectionConfiguration(this.defaultCollection)
-        .setPullFilter((doc, flags) => {
+        .setPullFilter((doc: any, flags: any) => {
           'replicatorFilter';
           return doc['type'] === 'type1';
         });
