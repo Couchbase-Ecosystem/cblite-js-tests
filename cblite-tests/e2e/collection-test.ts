@@ -1473,11 +1473,9 @@ export class CollectionTests extends TestCase {
       const originalDatabase = collection.database;
       
       // Attempt to modify database property
-      let errorThrown = false;
       try {
         collection.database = null;
       } catch (error) {
-        errorThrown = true;
         // In strict mode, this should throw TypeError
         expect(error).to.be.instanceOf(TypeError);
       }
