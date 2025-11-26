@@ -1460,4 +1460,260 @@ export class CollectionTests extends TestCase {
     }
     return false;
   }
+
+
+  /**
+   * This method tests that collection.database property is immutable
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testCollectionDatabaseIsImmutable(): Promise<ITestResult> {
+    try {
+      const collection = await this.database?.defaultCollection();
+      const originalDatabase = collection.database;
+      
+      // Attempt to modify database property
+      try {
+        collection.database = null;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify database hasn't changed (even if no error in non-strict mode)
+      expect(collection.database).to.equal(originalDatabase);
+      expect(collection.database).to.not.be.null;
+      
+      return {
+        testName: 'testCollectionDatabaseIsImmutable',
+        success: true,
+        message: 'Collection database property is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testCollectionDatabaseIsImmutable',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests that collection.name property is immutable
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testCollectionNameIsImmutable(): Promise<ITestResult> {
+    try {
+      const collection = await this.database?.createCollection('testImmutableName');
+      const originalName = collection.name;
+      expect(originalName).to.equal('testImmutableName');
+      
+      // Attempt to modify name property
+      try {
+        collection.name = 'modifiedName';
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify name hasn't changed
+      expect(collection.name).to.equal(originalName);
+      expect(collection.name).to.equal('testImmutableName');
+      
+      return {
+        testName: 'testCollectionNameIsImmutable',
+        success: true,
+        message: 'Collection name property is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testCollectionNameIsImmutable',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests that collection.scope property is immutable
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testCollectionScopeIsImmutable(): Promise<ITestResult> {
+    try {
+      const collection = await this.database?.createCollection('testImmutableScope', 'testScope');
+      const originalScope = collection.scope;
+      expect(originalScope.name).to.equal('testScope');
+      
+      // Attempt to modify scope property
+      try {
+        collection.scope = null;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify scope hasn't changed
+      expect(collection.scope).to.equal(originalScope);
+      expect(collection.scope.name).to.equal('testScope');
+      
+      return {
+        testName: 'testCollectionScopeIsImmutable',
+        success: true,
+        message: 'Collection scope property is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testCollectionScopeIsImmutable',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests that collection properties cannot be deleted
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testCollectionPropertiesCannotBeDeleted(): Promise<ITestResult> {
+    try {
+      const collection = await this.database?.defaultCollection();
+      
+      // Attempt to delete database property
+      try {
+        delete collection.database;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Attempt to delete name property
+      try {
+        delete collection.name;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Attempt to delete scope property
+      try {
+        delete collection.scope;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify properties still exist
+      expect(collection.database).to.not.be.undefined;
+      expect(collection.name).to.not.be.undefined;
+      expect(collection.scope).to.not.be.undefined;
+      
+      return {
+        testName: 'testCollectionPropertiesCannotBeDeleted',
+        success: true,
+        message: 'Collection properties cannot be deleted',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testCollectionPropertiesCannotBeDeleted',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests that scope.name property is immutable
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testScopeNameIsImmutable(): Promise<ITestResult> {
+    try {
+      const scope = await this.database?.scope('testScopeImmutable');
+      
+      // Create a collection to ensure scope exists
+      if (!scope) {
+        await this.database?.createCollection('tempCol', 'testScopeImmutable');
+      }
+      
+      const testScope = await this.database?.scope('testScopeImmutable');
+      const originalName = testScope.name;
+      expect(originalName).to.equal('testScopeImmutable');
+      
+      // Attempt to modify name property
+      try {
+        testScope.name = 'modifiedScope';
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify name hasn't changed
+      expect(testScope.name).to.equal(originalName);
+      expect(testScope.name).to.equal('testScopeImmutable');
+      
+      return {
+        testName: 'testScopeNameIsImmutable',
+        success: true,
+        message: 'Scope name property is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testScopeNameIsImmutable',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
+  /**
+   * This method tests that scope.database property is immutable
+   *
+   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   */
+  async testScopeDatabaseIsImmutable(): Promise<ITestResult> {
+    try {
+      const scope = await this.database?.defaultScope();
+      const originalDatabase = scope.database;
+      
+      // Attempt to modify database property
+      try {
+        scope.database = null;
+      } catch (error) {
+        // In strict mode, this should throw TypeError
+        expect(error).to.be.instanceOf(TypeError);
+      }
+      
+      // Verify database hasn't changed
+      expect(scope.database).to.equal(originalDatabase);
+      expect(scope.database).to.not.be.null;
+      
+      return {
+        testName: 'testScopeDatabaseIsImmutable',
+        success: true,
+        message: 'Scope database property is immutable',
+        data: undefined,
+      };
+    } catch (error) {
+      return {
+        testName: 'testScopeDatabaseIsImmutable',
+        success: false,
+        message: JSON.stringify(error),
+        data: undefined,
+      };
+    }
+  }
+
 }
