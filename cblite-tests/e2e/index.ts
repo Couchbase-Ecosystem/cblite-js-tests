@@ -15,3 +15,4 @@ export * from './test-result.types';
 export * from './test-runner';
 export * from './testing-test';
 export * from './vector-search-test';
+export * from './logsinks-test';
