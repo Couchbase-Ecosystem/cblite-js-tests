@@ -7,7 +7,7 @@ import {
   ReplicatorConfiguration,
   ReplicatorType,
   URLEndpoint,
-  CollectionConfig,
+  CollectionConfiguration,
   Collection,
   DatabaseConfiguration,
   Database,
@@ -17,35 +17,55 @@ import {
 import { expect } from 'chai';
 
 /**
- * ReplicatorTests - needs running Sync Gate to pass, visit README.md for more information.
- * Reminder all test cases must start with 'test' in the name of the method or they will not run
- * */
-export class ReplicatorTests extends TestCase {
+ * ReplicatorNewApiTests - Tests for the NEW ReplicatorConfiguration API using CollectionConfiguration
+ * 
+ * This test suite validates the NEW API pattern where:
+ * - CollectionConfiguration objects are created with their associated Collection
+ * - ReplicatorConfiguration is constructed with an array of CollectionConfiguration objects and an Endpoint
+ * - This follows the iOS native SDK pattern for immutability and clarity
+ * 
+ * Reminder: All test cases must start with 'test' in the name of the method or they will not run
+ */
+export class ReplicatorNewApiTests extends TestCase {
   constructor() {
     super();
   }
 
-  platformDomains = {
+  platformDomains: Record<string, string> = {
     ios: 'localhost',
     android: '10.0.2.2',
   };
 
-  private readonly SYNC_GATEWAY_URL = `ws://${this.platformDomains?.[this.platform] ?? 'WRONG PLATFORM'}:4984/projects`;
-  private readonly SYNC_GATEWAY_WRONG_URL = `ws://${this.platformDomains?.[this.platform] ?? 'WRONG PLATFORM'}:4984/unknown-db`;
+  private readonly SYNC_GATEWAY_URL = `ws://${this.platformDomains?.[this.platform as string] ?? 'WRONG PLATFORM'}:4984/projects`;
+  private readonly SYNC_GATEWAY_WRONG_URL = `ws://${this.platformDomains?.[this.platform as string] ?? 'WRONG PLATFORM'}:4984/unknown-db`;
   private readonly TEST_USERNAME = 'demo@example.com';
   private readonly TEST_PASSWORD = 'P@ssw0rd12';
 
+  /**
+   * Helper method to create a ReplicatorConfiguration using the NEW API
+   * 
+   * @param type - Replication type (PUSH, PULL, or PUSH_AND_PULL)
+   * @param continuous - Whether replication should be continuous
+   * @param collection - The collection to replicate (defaults to defaultCollection)
+   * @param collectionConfig - Optional CollectionConfiguration to customize replication settings
+   * @returns A configured ReplicatorConfiguration instance
+   */
   private createConfig(
     type: ReplicatorType = ReplicatorType.PUSH_AND_PULL,
     continuous: boolean = false,
     collection: Collection = this.defaultCollection,
-    collectionConfig?: CollectionConfig
+    collectionConfig?: CollectionConfiguration
   ): ReplicatorConfiguration {
     const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
-    const config = new ReplicatorConfiguration(target);
+    
+    // NEW API: Create CollectionConfiguration if not provided
+    const colConfig = collectionConfig ?? new CollectionConfiguration(collection);
+    
+    // NEW API: Pass array of CollectionConfiguration and target to constructor
+    const config = new ReplicatorConfiguration([colConfig], target);
+    
     config.setReplicatorType(type);
     config.setContinuous(continuous);
-    config.addCollection(collection, collectionConfig);
 
     // Add default authenticator
     const auth = new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD);
@@ -54,16 +74,22 @@ export class ReplicatorTests extends TestCase {
     return config;
   }
 
+  /**
+   * Helper method to run a replication to completion
+   * 
+   * @param config - The ReplicatorConfiguration to use
+   * @param reset - Whether to reset the checkpoint before starting
+   */
   private async runReplication(
     config: ReplicatorConfiguration,
     reset: boolean = false
   ): Promise<void> {
     const replicator = await Replicator.create(config);
 
-    let listenerToken: string;
+    let listenerToken: string | undefined;
     const completionPromise = new Promise<void>((resolve, reject) => {
       replicator
-        .addChangeListener((change) => {
+        .addChangeListener((change: any) => {
           const status = change.status;
           const activityLevel = status.getActivityLevel();
 
@@ -87,9 +113,10 @@ export class ReplicatorTests extends TestCase {
             }
           }
         })
-        .then((token) => {
+        .then((token: string) => {
           listenerToken = token;
-        });
+        })
+        .catch(reject);
     });
 
     try {
@@ -98,22 +125,28 @@ export class ReplicatorTests extends TestCase {
     } catch (e) {
       console.error(e);
     } finally {
-      await replicator.removeChangeListener(listenerToken);
+      if (listenerToken) {
+        await replicator.removeChangeListener(listenerToken);
+      }
       replicator.stop();
     }
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 1: Verify default values are set correctly in ReplicatorConfiguration (NEW API)
+   * 
+   * This test ensures that when creating a ReplicatorConfiguration with the NEW API,
+   * all default values are properly initialized.
    */
   async testReplicatorConfigDefaultValues(): Promise<ITestResult> {
     const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
-    const config = new ReplicatorConfiguration(target);
-    config.addCollection(this.collection);
+    
+    // NEW API: Create CollectionConfiguration and pass to constructor
+    const collectionConfig = new CollectionConfiguration(this.collection);
+    const config = new ReplicatorConfiguration([collectionConfig], target);
 
     try {
-      //check to make sure that the default values are being set in the configuration
+      // Check to make sure that the default values are being set in the configuration
       expect(config.getCollections().length).to.be.equal(1);
       expect(config.getCollections()[0]).to.be.equal(this.collection);
       expect(config.getReplicatorType()).to.be.equal(
@@ -147,6 +180,7 @@ export class ReplicatorTests extends TestCase {
 
       expect(config.getHeaders()).to.be.equal(undefined);
       expect(config.getAuthenticator()).to.be.equal(undefined);
+      
       return {
         testName: 'testReplicatorConfigDefaultValues',
         success: true,
@@ -164,8 +198,89 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test basic NEW API replication
+   * 
+   * This test verifies that the NEW API can successfully pull documents from Sync Gateway
+   * with minimal configuration.
+   */
+  async testMinimalNewApiReplication(): Promise<ITestResult> {
+    try {
+      if (!this.defaultCollection) {
+        throw new Error('defaultCollection is undefined!');
+      }
+      
+      const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
+      const auth = new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD);
+      
+      const colConfig = new CollectionConfiguration(this.defaultCollection);
+      const config = new ReplicatorConfiguration([colConfig], target);
+      config.setReplicatorType(ReplicatorType.PULL);
+      config.setAuthenticator(auth);
+      
+      const replicator = await Replicator.create(config);
+      
+      // Use a proper completion promise instead of manual sleep+stop
+      let listenerToken: string | undefined;
+      const completionPromise = new Promise<void>((resolve, reject) => {
+        replicator
+          .addChangeListener((change: any) => {
+            const status = change.status;
+            const activityLevel = status.getActivityLevel();
+            
+            if (activityLevel === ReplicatorActivityLevel.STOPPED) {
+              const error = status.getError();
+              if (error) {
+                reject(new Error(`Replication error: ${JSON.stringify(error)}`));
+              } else {
+                resolve();
+              }
+            }
+          })
+          .then((token: string) => {
+            listenerToken = token;
+          })
+          .catch(reject);
+      });
+      
+      await replicator.start(false);
+      
+      // Wait for replication to complete naturally
+      await completionPromise;
+      
+      // Clean up
+      if (listenerToken) {
+        await replicator.removeChangeListener(listenerToken);
+      }
+      
+      const count = await this.defaultCollection.count();
+      
+      if (count.count === 0) {
+        throw new Error('No documents were pulled from Sync Gateway. Check that Sync Gateway is running and has documents.');
+      }
+      
+      return {
+        testName: 'testMinimalNewApiReplication',
+        success: true,
+        message: `Successfully pulled ${count.count} documents`,
+        data: undefined,
+      };
+    } catch (error: any) {
+      return {
+        testName: 'testMinimalNewApiReplication',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   * Test 3: Verify replication status change listener events (NEW API)
+   * 
+   * This test ensures that status change listeners are properly triggered during replication
+   * and that documents are successfully replicated.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testReplicationStatusChangeListenerEvent(): Promise<ITestResult> {
     try {
@@ -174,7 +289,7 @@ export class ReplicatorTests extends TestCase {
       let didGetChangeStatus = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addChangeListener((change) => {
+      const token = await replicator.addChangeListener((change: any) => {
         // Check to see if there was an error
         const error = change.status.getError();
         if (error !== undefined) {
@@ -218,8 +333,12 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 4: Verify document change listener events (NEW API)
+   * 
+   * This test ensures that document-level change listeners are properly triggered
+   * during replication and capture document-specific events.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testDocumentChangeListenerEvent(): Promise<ITestResult> {
     try {
@@ -228,7 +347,7 @@ export class ReplicatorTests extends TestCase {
       let didGetDocumentUpdate = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addDocumentChangeListener((change) => {
+      const token = await replicator.addDocumentChangeListener((change: any) => {
         // Check to see if the documents were pushed or pulled
         for (const doc of change.documents) {
           if (doc.error !== undefined) {
@@ -273,8 +392,12 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 5: Verify empty push replication completes without errors (NEW API)
+   * 
+   * This test ensures that push replication works correctly even when there are
+   * no local documents to push.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testEmptyPush(): Promise<ITestResult> {
     try {
@@ -287,7 +410,7 @@ export class ReplicatorTests extends TestCase {
       const replicatorCompletionPromise = new Promise<void>(
         (resolve, reject) => {
           replicator
-            .addChangeListener((change) => {
+            .addChangeListener((change: any) => {
               const status = change.status;
               const activityLevel = status.getActivityLevel();
 
@@ -301,7 +424,7 @@ export class ReplicatorTests extends TestCase {
                 }
               }
             })
-            .then((token) => {
+            .then((token: string) => {
               listenerToken = token;
             });
         }
@@ -330,9 +453,93 @@ export class ReplicatorTests extends TestCase {
       };
     }
   }
+
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 6: Verify pull filter works correctly with NEW API
+   * 
+   * This test ensures that pull filters defined in CollectionConfiguration
+   * properly filter documents during pull replication.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
+   */
+  async testPullFilter(): Promise<ITestResult> {
+    try {
+      const doc1Id = `test-doc-1-${Date.now()}`;
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: 'not-pull',
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc1);
+
+      const doc2Id = `test-doc-2-${Date.now()}`;
+      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
+        name: 'pull',
+        documentType: 'project',
+        team: 'team1',
+      });
+      this.defaultCollection.save(doc2);
+
+      // Push both documents to server
+      const replPushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        false,
+        this.defaultCollection
+      );
+      await this.runReplication(replPushConfig);
+
+      // Purge both documents locally
+      this.defaultCollection.purgeById(doc1Id);
+      this.defaultCollection.purgeById(doc2Id);
+
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(await this.defaultCollection.getDocument(doc2Id)).to.be.undefined;
+
+      // NEW API: Create CollectionConfiguration with pull filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any) => {
+          'replicatorFilter';
+          return doc['name'] !== 'not-pull';
+        });
+
+      const replPullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(replPullConfig);
+
+      // Verify only doc2 was pulled (doc1 was filtered out)
+      const replicatedDoc = await this.defaultCollection.getDocument(doc2Id);
+      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
+      expect(replicatedDoc).to.not.be.undefined;
+      expect(replicatedDoc.getData().name).to.be.equal('pull');
+
+      return {
+        testName: 'testPullFilter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error: any) {
+      return {
+        testName: 'testPullFilter',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   * Test 7: Verify checkpoint behavior with NEW API
+   * 
+   * This test ensures that replication checkpoints work correctly, preventing
+   * re-pulling of documents that were already pulled.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testStartWithCheckpoint(): Promise<ITestResult> {
     try {
@@ -383,7 +590,7 @@ export class ReplicatorTests extends TestCase {
         message: 'Successfully verified checkpoint reset behavior',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testStartWithCheckpoint',
         success: false,
@@ -394,8 +601,11 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 8: Verify checkpoint reset with continuous replication (NEW API)
+   * 
+   * This test ensures that checkpoint reset works correctly with continuous replication.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testStartWithResetCheckpointContinuous(): Promise<ITestResult> {
     try {
@@ -447,7 +657,7 @@ export class ReplicatorTests extends TestCase {
           'Successfully verified checkpoint reset behavior with continuous replication',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testStartWithResetCheckpointContinuous',
         success: false,
@@ -458,8 +668,12 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 9: Verify removing document replication listener (NEW API)
+   * 
+   * This test ensures that document replication listeners can be properly removed
+   * and that attempting to remove an already-removed listener throws an error.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testRemoveDocumentReplicationListener(): Promise<ITestResult> {
     try {
@@ -468,7 +682,7 @@ export class ReplicatorTests extends TestCase {
       let didGetDocumentUpdate = false;
 
       const replicator = await Replicator.create(config);
-      const token = await replicator.addDocumentChangeListener((change) => {
+      const token = await replicator.addDocumentChangeListener((change: any) => {
         // Check to see if the documents were pushed or pulled
         for (const doc of change.documents) {
           if (doc.error !== undefined) {
@@ -490,6 +704,16 @@ export class ReplicatorTests extends TestCase {
       const count = await this.defaultCollection.count();
       expect(count.count).to.be.greaterThan(0);
 
+      // Try to remove already removed listener
+      let error: any;
+      try {
+        await replicator.removeChangeListener(token);
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error.message).to.contain('No listener found');
+
       return {
         testName: 'testRemoveDocumentReplicationListener',
         success: true,
@@ -506,22 +730,13 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
-  // /**
-  //  *
-  //  * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-  //  */
-  // async testDocumentReplicationEventWithPushConflict(): Promise<ITestResult> {
-  //   return {
-  //     testName: "testDocumentReplicationEventWithPushConflict",
-  //     success: false,
-  //     message: "Not implemented",
-  //     data: undefined,
-  //   };
-  // }
-
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 10: Verify document replication event with pull conflict (NEW API)
+   * 
+   * This test creates a conflict scenario where the same document is modified
+   * in two different databases and then replicated, ensuring conflicts are handled.
+   * 
+   * TEMPORARILY COMMENTED OUT FOR DEBUGGING
    */
   async testDocumentReplicationEventWithPullConflict(): Promise<ITestResult> {
     try {
@@ -536,9 +751,9 @@ export class ReplicatorTests extends TestCase {
       const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
       const auth = new BasicAuthenticator('demo@example.com', 'P@ssw0rd12');
 
-      // Push the document to Sync Gateway
-      let config = new ReplicatorConfiguration(target);
-      config.addCollection(this.defaultCollection);
+      // Push the document to Sync Gateway (NEW API)
+      const collectionConfig1 = new CollectionConfiguration(this.defaultCollection);
+      let config = new ReplicatorConfiguration([collectionConfig1], target);
       config.setReplicatorType(ReplicatorType.PUSH);
       config.setAuthenticator(auth);
 
@@ -552,7 +767,7 @@ export class ReplicatorTests extends TestCase {
 
       if (!(otherDb instanceof Database)) {
         return {
-          testName: 'testEqualityDifferentDB',
+          testName: 'testDocumentReplicationEventWithPullConflict',
           success: false,
           message: "otherDb isn't a database instance",
           data: undefined,
@@ -560,9 +775,9 @@ export class ReplicatorTests extends TestCase {
       }
       const otherCollection = await otherDb.defaultCollection();
 
-      // Pull the document to the other database
-      config = new ReplicatorConfiguration(target);
-      config.addCollection(otherCollection);
+      // Pull the document to the other database (NEW API)
+      const collectionConfig2 = new CollectionConfiguration(otherCollection);
+      config = new ReplicatorConfiguration([collectionConfig2], target);
       config.setReplicatorType(ReplicatorType.PULL);
       config.setAuthenticator(auth);
 
@@ -574,9 +789,9 @@ export class ReplicatorTests extends TestCase {
       mutableOtherDoc.setString('pattern', 'Striped'); // Different from "Star"
       await otherCollection.save(mutableOtherDoc);
 
-      // Push the modified document back to Sync Gateway
-      config = new ReplicatorConfiguration(target);
-      config.addCollection(otherCollection);
+      // Push the modified document back to Sync Gateway (NEW API)
+      const collectionConfig3 = new CollectionConfiguration(otherCollection);
+      config = new ReplicatorConfiguration([collectionConfig3], target);
       config.setReplicatorType(ReplicatorType.PUSH);
       config.setAuthenticator(auth);
 
@@ -584,9 +799,9 @@ export class ReplicatorTests extends TestCase {
 
       // Now we have a conflict: local document is "Star", Sync Gateway has "Striped"
 
-      // Try to pull, which should merge with local version
-      config = new ReplicatorConfiguration(target);
-      config.addCollection(this.defaultCollection);
+      // Try to pull, which should merge with local version (NEW API)
+      const collectionConfig4 = new CollectionConfiguration(this.defaultCollection);
+      config = new ReplicatorConfiguration([collectionConfig4], target);
       config.setReplicatorType(ReplicatorType.PULL);
       config.setAuthenticator(auth);
 
@@ -596,7 +811,7 @@ export class ReplicatorTests extends TestCase {
       let conflictDoc: any = null;
 
       const docChangePromise = new Promise<void>((resolve) => {
-        replicator.addDocumentChangeListener((change) => {
+        replicator.addDocumentChangeListener((change: any) => {
           if (!change.isPush) {
             for (const doc of change.documents) {
               if (doc.id === docId) {
@@ -646,7 +861,7 @@ export class ReplicatorTests extends TestCase {
           'Successfully verified document replication event with pull conflict',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testDocumentReplicationEventWithPullConflict',
         success: false,
@@ -664,8 +879,10 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 10: Verify document replication event with deletion (NEW API)
+   * 
+   * This test ensures that document deletion events are properly captured
+   * during replication with the DELETED flag.
    */
   async testDocumentReplicationEventWithDeletion(): Promise<ITestResult> {
     try {
@@ -680,16 +897,17 @@ export class ReplicatorTests extends TestCase {
 
       this.defaultCollection.deleteDocument(doc1);
 
-      const replConfig = this.createConfig(
-        ReplicatorType.PUSH,
-        false,
-        this.defaultCollection
-      );
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const replConfig = new ReplicatorConfiguration([collectionConfig], new URLEndpoint(this.SYNC_GATEWAY_URL));
+      replConfig.setReplicatorType(ReplicatorType.PUSH);
+      replConfig.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+      
       const replicator = await Replicator.create(replConfig);
-      const replicatedDocuments = [];
+      const replicatedDocuments: any = [];
 
-      const token = await replicator.addDocumentChangeListener((change) => {
-        change.documents.forEach((document) =>
+      const token = await replicator.addDocumentChangeListener((change: any) => {
+        change.documents.forEach((document: any) =>
           replicatedDocuments.push(document)
         );
       });
@@ -720,25 +938,28 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 11: Verify continuous push filter (NEW API)
+   * 
+   * This test ensures that push filters work correctly with continuous replication,
+   * filtering documents based on custom criteria.
    */
   async testContinuousPushFilter(): Promise<ITestResult> {
     const docCount = 20;
     try {
       const docs = await this.createDocs(docCount);
 
-      const collConfig = new CollectionConfig(undefined, undefined);
-      collConfig.setPushFilter((doc, flags) => {
-        'replicatorFilter';
-        return Boolean(doc['number'] % 3);
-      });
+      // NEW API: Create CollectionConfiguration with push filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPushFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          return Boolean(doc['number'] % 3);
+        });
 
       const pushConfig = this.createConfig(
         ReplicatorType.PUSH_AND_PULL,
         true,
         this.defaultCollection,
-        collConfig
+        collectionConfig
       );
 
       const replicator = await Replicator.create(pushConfig);
@@ -784,9 +1005,9 @@ export class ReplicatorTests extends TestCase {
         testName: 'testContinuousPushFilter',
         success: true,
         message: `success`,
-        data: null,
+        data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testContinuousPushFilter',
         success: false,
@@ -797,81 +1018,10 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
-   */
-  async testPullFilter(): Promise<ITestResult> {
-    try {
-      const doc1Id = `test-doc-1-${Date.now()}`;
-      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
-        name: 'not-pull',
-        documentType: 'project',
-        team: 'team1',
-      });
-      this.defaultCollection.save(doc1);
-
-      const doc2Id = `test-doc-2-${Date.now()}`;
-      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
-        name: 'pull',
-        documentType: 'project',
-        team: 'team1',
-      });
-      this.defaultCollection.save(doc2);
-
-      const replPushConfig = this.createConfig(
-        ReplicatorType.PUSH,
-        false,
-        this.defaultCollection
-      );
-      await this.runReplication(replPushConfig);
-
-      this.defaultCollection.purgeById(doc1Id);
-      this.defaultCollection.purgeById(doc2Id);
-
-      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
-      expect(await this.defaultCollection.getDocument(doc2Id)).to.be.undefined;
-
-      const collectionConfig = new CollectionConfig([], []);
-
-      collectionConfig.setPullFilter((doc) => {
-        'replicatorFilter';
-
-        return doc['name'] !== 'not-pull';
-      });
-
-      const replPullConfig = this.createConfig(
-        ReplicatorType.PULL,
-        false,
-        this.defaultCollection,
-        collectionConfig
-      );
-
-      await this.runReplication(replPullConfig);
-
-      const replicatedDoc = await this.defaultCollection.getDocument(doc2Id);
-      expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
-      expect(replicatedDoc).to.not.be.undefined;
-      expect(replicatedDoc.getData().name).to.be.equal('pull');
-
-      return {
-        testName: 'testPullFilter',
-        success: true,
-        message: 'success',
-        data: undefined,
-      };
-    } catch (error) {
-      return {
-        testName: 'testPullFilter',
-        success: false,
-        message: `${error}`,
-        data: error.stack || error.toString(),
-      };
-    }
-  }
-
-  /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 12: Verify pull filter with nested objects (NEW API)
+   * 
+   * This test ensures that pull filters can access nested object properties
+   * to filter documents during pull replication.
    */
   async testPullFilterWithNestedObjects(): Promise<ITestResult> {
     try {
@@ -904,13 +1054,12 @@ export class ReplicatorTests extends TestCase {
       expect(await this.defaultCollection.getDocument(doc1Id)).to.be.undefined;
       expect(await this.defaultCollection.getDocument(doc2Id)).to.be.undefined;
 
-      const collectionConfig = new CollectionConfig([], []);
-
-      collectionConfig.setPullFilter((doc) => {
-        'replicatorFilter';
-
-        return doc?.['prop1']?.['prop2']?.['prop3'] !== 'not-pull';
-      });
+      // NEW API: Create CollectionConfiguration with nested object filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any) => {
+          'replicatorFilter';
+          return doc?.['prop1']?.['prop2']?.['prop3'] !== 'not-pull';
+        });
 
       const replPullConfig = this.createConfig(
         ReplicatorType.PULL,
@@ -932,7 +1081,7 @@ export class ReplicatorTests extends TestCase {
         message: 'success',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPullFilterWithNestedObjects',
         success: false,
@@ -942,6 +1091,12 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
+  /**
+   * Test 13: Verify push filter with nested objects (NEW API)
+   * 
+   * This test ensures that push filters can access nested arrays and objects
+   * to filter documents during push replication.
+   */
   async testPushFilterWithNestedObj(): Promise<ITestResult> {
     try {
       const doc1 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
@@ -954,13 +1109,12 @@ export class ReplicatorTests extends TestCase {
       });
       await this.defaultCollection.save(doc2);
 
-      const collectionConfig = new CollectionConfig([], []);
-
-      collectionConfig.setPushFilter(function (document, flags) {
-        'replicatorFilter';
-
-        return document?.['prop1']?.['prop2']?.some(Boolean);
-      });
+      // NEW API: Create CollectionConfiguration with nested object filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPushFilter(function (document: any, flags: any) {
+          'replicatorFilter';
+          return document?.['prop1']?.['prop2']?.some(Boolean);
+        });
 
       const pushConfig = this.createConfig(
         ReplicatorType.PUSH,
@@ -988,9 +1142,9 @@ export class ReplicatorTests extends TestCase {
         testName: 'testPushFilterWithNestedObj',
         success: true,
         message: 'success',
-        data: null,
+        data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPushFilterWithNestedObj',
         success: false,
@@ -1001,8 +1155,10 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 14: Verify push and forget pattern (NEW API)
+   * 
+   * This test demonstrates the "push and forget" pattern where a document
+   * is pushed to the server and then immediately expired locally.
    */
   async testPushAndForget(): Promise<ITestResult> {
     try {
@@ -1016,13 +1172,18 @@ export class ReplicatorTests extends TestCase {
       const initialSourceCount = await this.defaultCollection.count();
       expect(initialSourceCount.count).to.equal(1);
 
-      const pushConfig = this.createConfig(ReplicatorType.PUSH, false);
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const pushConfig = new ReplicatorConfiguration([collectionConfig], new URLEndpoint(this.SYNC_GATEWAY_URL));
+      pushConfig.setReplicatorType(ReplicatorType.PUSH);
+      pushConfig.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+      
       const replicator = await Replicator.create(pushConfig);
 
       const docReplicationToken = await replicator.addDocumentChangeListener(
-        async (change) => {
+        async (change: any) => {
           const ourDocument = change.documents.find(
-            (doc) => doc.id === docToRemove.getId()
+            (doc: any) => doc.id === docToRemove.getId()
           );
           if (ourDocument && change.isPush) {
             // Set expiration to current date (immediate expiry)
@@ -1049,9 +1210,9 @@ export class ReplicatorTests extends TestCase {
         testName: 'testPushAndForget',
         success: true,
         message: `success`,
-        data: null,
+        data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPushAndForget',
         success: false,
@@ -1062,8 +1223,10 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 15: Verify pull removed document with filter (single-shot) (NEW API)
+   * 
+   * This test ensures that pull filters correctly handle deleted documents,
+   * allowing selective deletion based on filter criteria.
    */
   async testPullRemovedDocWithFilterSingleShot(): Promise<ITestResult> {
     try {
@@ -1102,12 +1265,12 @@ export class ReplicatorTests extends TestCase {
 
       const otherCollection = await this.otherDatabase.defaultCollection();
 
-      // Pull documents into other database
-      const otherConfig = this.createConfig(
-        ReplicatorType.PUSH_AND_PULL,
-        false,
-        otherCollection
-      );
+      // Pull documents into other database (NEW API)
+      const collectionConfig1 = new CollectionConfiguration(otherCollection);
+      const otherConfig = new ReplicatorConfiguration([collectionConfig1], new URLEndpoint(this.SYNC_GATEWAY_URL));
+      otherConfig.setReplicatorType(ReplicatorType.PUSH_AND_PULL);
+      otherConfig.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+      
       await this.runReplication(otherConfig);
 
       // Delete both documents in the other database
@@ -1120,23 +1283,24 @@ export class ReplicatorTests extends TestCase {
       // Push deletions back to server
       await this.runReplication(otherConfig);
 
-      const collectionConfig = new CollectionConfig(undefined, undefined);
-      collectionConfig.setPullFilter((doc, flags) => {
-        'replicatorFilter';
-        if (flags.includes(ReplicatedDocumentFlag.DELETED)) {
-          // For deletions, only allow those with "pass" in the ID
-          return doc['id'].includes('pass');
-        }
-        // For regular documents, allow all with name "pass"
-        return doc['name'] === 'pass';
-      });
+      // NEW API: Create CollectionConfiguration with deletion filter
+      const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          if (flags.includes(ReplicatedDocumentFlag.DELETED)) {
+            // For deletions, only allow those with "pass" in the ID
+            return doc['id'].includes('pass');
+          }
+          // For regular documents, allow all with name "pass"
+          return doc['name'] === 'pass';
+        });
 
       // Pull with filter to test deletion handling
       const pullConfig = this.createConfig(
         ReplicatorType.PULL,
         false,
         this.defaultCollection,
-        collectionConfig
+        collectionConfig2
       );
       await this.runReplication(pullConfig);
 
@@ -1155,7 +1319,7 @@ export class ReplicatorTests extends TestCase {
         message: 'success',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPullRemovedDocWithFilterSingleShot',
         success: false,
@@ -1166,8 +1330,9 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 16: Verify pull removed document with filter (continuous) (NEW API)
+   * 
+   * This test is similar to Test 15 but uses continuous replication mode.
    */
   async testPullRemovedDocWithFilterContinuous(): Promise<ITestResult> {
     try {
@@ -1206,12 +1371,12 @@ export class ReplicatorTests extends TestCase {
 
       const otherCollection = await this.otherDatabase.defaultCollection();
 
-      // Pull documents into other database
-      const otherConfig = this.createConfig(
-        ReplicatorType.PUSH_AND_PULL,
-        false,
-        otherCollection
-      );
+      // Pull documents into other database (NEW API)
+      const collectionConfig1 = new CollectionConfiguration(otherCollection);
+      const otherConfig = new ReplicatorConfiguration([collectionConfig1], new URLEndpoint(this.SYNC_GATEWAY_URL));
+      otherConfig.setReplicatorType(ReplicatorType.PUSH_AND_PULL);
+      otherConfig.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+      
       await this.runReplication(otherConfig);
 
       // Delete both documents in the other database
@@ -1224,26 +1389,27 @@ export class ReplicatorTests extends TestCase {
       // Push deletions back to server
       await this.runReplication(otherConfig);
 
-      const collectionConfig = new CollectionConfig(undefined, undefined);
-      collectionConfig.setPullFilter((doc, flags) => {
-        'replicatorFilter';
-        const isDeleted = flags.includes(ReplicatedDocumentFlag.DELETED);
+      // NEW API: Create CollectionConfiguration with deletion filter
+      const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          const isDeleted = flags.includes(ReplicatedDocumentFlag.DELETED);
 
-        if (isDeleted) {
-          // For deletions, only allow those with "pass" in the ID
-          return doc['id'].includes('pass');
-        }
+          if (isDeleted) {
+            // For deletions, only allow those with "pass" in the ID
+            return doc['id'].includes('pass');
+          }
 
-        // For regular documents, allow all with name "pass"
-        return doc['name'] === 'pass';
-      });
+          // For regular documents, allow all with name "pass"
+          return doc['name'] === 'pass';
+        });
 
       // Pull with filter to test deletion handling
       const pullConfig = this.createConfig(
         ReplicatorType.PULL,
         false,
         this.defaultCollection,
-        collectionConfig
+        collectionConfig2
       );
       await this.runReplication(pullConfig);
 
@@ -1262,7 +1428,7 @@ export class ReplicatorTests extends TestCase {
         message: 'success',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testPullRemovedDocWithFilterContinuous',
         success: false,
@@ -1273,16 +1439,211 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 17: Verify stop and restart push replication with filter (NEW API)
+   * 
+   * This test ensures that push filters continue to work correctly after
+   * stopping and restarting replication.
+   */
+  async testStopAndRestartPushReplicationWithFilter(): Promise<ITestResult> {
+    try {
+      const doc1 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
+        name: 'push-pass',
+      });
+      await this.defaultCollection.save(doc1);
+
+      // NEW API: Create CollectionConfiguration with push filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPushFilter(function (document: any, flags: any) {
+          'replicatorFilter';
+          return document['name'].includes('push-pass');
+        });
+
+      const pushConfig = this.createConfig(
+        ReplicatorType.PUSH,
+        false,
+        this.defaultCollection,
+        collectionConfig
+      );
+
+      await this.runReplication(pushConfig);
+
+      expect((await this.defaultCollection.count()).count).to.equal(1);
+
+      const doc2 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
+        name: 'push-pass',
+      });
+      await this.defaultCollection.save(doc2);
+
+      const doc3 = this.createDocumentWithIdAndData(`doc-${Date.now()}`, {
+        name: 'not-pass',
+      });
+      await this.defaultCollection.save(doc3);
+
+      await this.runReplication(pushConfig);
+
+      expect((await this.defaultCollection.count()).count).to.equal(3);
+
+      await this.defaultCollection.purge(doc1);
+      await this.defaultCollection.purge(doc2);
+      await this.defaultCollection.purge(doc3);
+
+      const pullConfig = this.createConfig(ReplicatorType.PULL, false);
+
+      await this.runReplication(pullConfig);
+
+      const localDoc1 = await this.defaultCollection.document(doc1.getId());
+      const localDoc2 = await this.defaultCollection.document(doc2.getId());
+      const localDoc3 = await this.defaultCollection.document(doc3.getId());
+
+      expect(localDoc1).to.not.be.undefined;
+      expect(localDoc2).to.not.be.undefined;
+      expect(localDoc3).to.be.undefined;
+
+      return {
+        testName: 'testStopAndRestartPushReplicationWithFilter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error: any) {
+      return {
+        testName: 'testStopAndRestartPushReplicationWithFilter',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   * Test 18: Verify stop and restart pull replication with filter (NEW API)
+   * 
+   * This test ensures that pull filters continue to work correctly after
+   * stopping and restarting replication.
+   */
+  async testStopAndRestartPullReplicationWithFilter(): Promise<ITestResult> {
+    try {
+      if (!this.otherDatabase) {
+        const databaseResult = await this.getDatabase(
+          this.otherDatabaseName,
+          this.directory,
+          ''
+        );
+        if (databaseResult instanceof Database) {
+          this.otherDatabase = databaseResult;
+          await this.otherDatabase.open();
+        }
+      }
+
+      const otherCollection = await this.otherDatabase.defaultCollection();
+
+      // Use a unique test marker to isolate this test from other test runs
+      const testMarker = `pull-restart-test-${Date.now()}`;
+
+      // Use unique IDs to avoid conflicts from previous test runs
+      const doc1Id = `doc1-${testMarker}`;
+      const doc1 = this.createDocumentWithIdAndData(doc1Id, {
+        name: testMarker,  // Use unique marker instead of generic 'pass'
+        documentType: 'project',
+        team: 'team1',
+      });
+      await otherCollection.save(doc1);
+
+      // NEW API: Create CollectionConfiguration for other collection
+      const collectionConfig1 = new CollectionConfiguration(otherCollection);
+      const pushConfig = new ReplicatorConfiguration([collectionConfig1], new URLEndpoint(this.SYNC_GATEWAY_URL));
+      pushConfig.setReplicatorType(ReplicatorType.PUSH);
+      pushConfig.setContinuous(true);
+      pushConfig.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+
+      await this.runReplication(pushConfig);
+
+      // NEW API: Create CollectionConfiguration with pull filter using unique marker
+      const collectionConfig2 = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          // Filter for documents with our unique test marker
+          const name = doc['name'];
+          return typeof name === 'string' && name.startsWith('pull-restart-test-');
+        });
+
+      // Create continuous pull replicator
+      const pullConfig = this.createConfig(
+        ReplicatorType.PULL,
+        true,
+        this.defaultCollection,
+        collectionConfig2
+      );
+
+      await this.runReplication(pushConfig);
+
+      await this.runReplication(pullConfig);
+
+      // Verify doc1 was pulled
+      const doc1AfterPull = await this.defaultCollection.getDocument(doc1Id);
+      expect(doc1AfterPull).to.not.be.undefined;
+
+      const doc2Id = `doc2-${testMarker}`;
+      const doc2 = this.createDocumentWithIdAndData(doc2Id, {
+        name: testMarker,  // Same marker, should pass filter
+        documentType: 'project',
+        team: 'team1',
+      });
+      await otherCollection.save(doc2);
+
+      const doc3Id = `doc3-${testMarker}`;
+      const doc3 = this.createDocumentWithIdAndData(doc3Id, {
+        name: 'donotpass',  // Different name, should NOT pass filter
+        documentType: 'project',
+        team: 'team1',
+      });
+      await otherCollection.save(doc3);
+
+      await this.runReplication(pushConfig);
+
+      await this.runReplication(pullConfig);
+
+      // Verify the specific documents we created
+      const localDoc1Final = await this.defaultCollection.getDocument(doc1Id);
+      const localDoc2Final = await this.defaultCollection.getDocument(doc2Id);
+      const localDoc3Final = await this.defaultCollection.getDocument(doc3Id);
+
+      expect(localDoc1Final).to.not.be.undefined;
+      expect(localDoc2Final).to.not.be.undefined;
+      expect(localDoc3Final).to.be.undefined; // Filtered out by pull filter
+
+      return {
+        testName: 'testStopAndRestartPullReplicationWithFilter',
+        success: true,
+        message: 'success',
+        data: undefined,
+      };
+    } catch (error: any) {
+      return {
+        testName: 'testStopAndRestartPullReplicationWithFilter',
+        success: false,
+        message: `${error}`,
+        data: error.stack || error.toString(),
+      };
+    }
+  }
+
+  /**
+   * Test 19: Verify removing change listener (NEW API)
+   * 
+   * This test ensures that change listeners can be properly removed and that
+   * no callbacks are received after removal.
    */
   async testRemoveChangeListener(): Promise<ITestResult> {
     try {
       // Setup replicator with failing target to ensure consistent activity
       const target = new URLEndpoint(this.SYNC_GATEWAY_WRONG_URL);
-      const config = new ReplicatorConfiguration(target);
+      
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const config = new ReplicatorConfiguration([collectionConfig], target);
       config.setMaxAttempts(2); // Allow some retries to generate events
-      config.addCollection(this.defaultCollection);
+      config.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
 
       const replicator = await Replicator.create(config);
 
@@ -1323,7 +1684,7 @@ export class ReplicatorTests extends TestCase {
         message: 'Successfully verified change listener removal',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testRemoveChangeListener',
         success: false,
@@ -1334,16 +1695,21 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 20: Verify adding/removing change listener after replicator start (NEW API)
+   * 
+   * This test ensures that listeners can be added and removed while the replicator
+   * is running, and that removal stops callbacks immediately.
    */
   async testAddRemoveChangeListenerAfterReplicatorStart(): Promise<ITestResult> {
     try {
       const target = new URLEndpoint(this.SYNC_GATEWAY_WRONG_URL);
-      const config = new ReplicatorConfiguration(target);
+      
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const config = new ReplicatorConfiguration([collectionConfig], target);
       config.setMaxAttempts(4);
       config.setMaxAttemptWaitTime(2);
-      config.addCollection(this.defaultCollection);
+      config.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
 
       const replicator = await Replicator.create(config);
 
@@ -1351,7 +1717,7 @@ export class ReplicatorTests extends TestCase {
       let activityLevels: ReplicatorActivityLevel[] = [];
 
       // Add a listener before starting replication
-      const token = await replicator.addChangeListener((change) => {
+      const token = await replicator.addChangeListener((change: any) => {
         activityLevels.push(change.status.getActivityLevel());
       });
 
@@ -1383,7 +1749,7 @@ export class ReplicatorTests extends TestCase {
           'Successfully verified removing listener after replicator start',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testAddRemoveChangeListenerAfterReplicatorStart',
         success: false,
@@ -1394,16 +1760,19 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 21: Verify copying replicator configuration (NEW API)
+   * 
+   * This test ensures that when a replicator is created, it makes a copy of the
+   * configuration, so changes to the original don't affect the replicator.
    */
   async testCopyingReplicatorConfiguration(): Promise<ITestResult> {
     try {
       // Create a target for configuration
       const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
 
-      // Create configuration with non-default values
-      const config = new ReplicatorConfiguration(target);
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const config = new ReplicatorConfiguration([collectionConfig], target);
 
       // Set authentication
       const basic = new BasicAuthenticator('abcd', '1234');
@@ -1424,12 +1793,6 @@ export class ReplicatorTests extends TestCase {
       // Set pinnedServerCertificate
       const certificateData = "";
       config.setPinnedServerCertificate(certificateData);
-
-      // Create a collection configuration with channels and document IDs
-      const colConfig = new CollectionConfig(['c1', 'c2'], ['d1', 'd2']);
-
-      // Add collection with config
-      config.addCollection(this.defaultCollection);
 
       // Store original values for later comparison
       const originalContinuous = config.getContinuous();
@@ -1470,10 +1833,6 @@ export class ReplicatorTests extends TestCase {
       config.setAllowReplicatingInBackground(false);
       config.setAutoPurgeEnabled(true);
       config.setAcceptParentDomainCookies(false);
-
-      // Remove the collection and add it back with a new empty config
-      config.removeCollection(this.defaultCollection);
-      config.addCollection(this.defaultCollection);
 
       // Get the configuration from the replicator
       const replicatorConfig = replicator.getConfiguration();
@@ -1517,12 +1876,6 @@ export class ReplicatorTests extends TestCase {
         expect(replicatorAuth.toJson().password).to.equal(originalPassword);
       }
 
-      // Verify collection configuration
-      const collectionConfig = replicatorConfig.getCollectionConfig(
-        this.defaultCollection
-      );
-      expect(collectionConfig).to.not.be.null;
-
       // Clean up
       await replicator.stop();
       await replicator.cleanup();
@@ -1533,7 +1886,7 @@ export class ReplicatorTests extends TestCase {
         message: 'Successfully verified replicator configuration independence',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testCopyingReplicatorConfiguration',
         success: false,
@@ -1544,14 +1897,22 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 22: Verify replication config setter methods (NEW API)
+   * 
+   * This test ensures that all setter methods work correctly and that
+   * the replicator receives the correct configuration values.
    */
   async testReplicationConfigSetterMethods(): Promise<ITestResult> {
     try {
       // Create a target for our configuration
       const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
-      const config = new ReplicatorConfiguration(target);
+      
+      // NEW API: Create CollectionConfiguration with channels and document IDs
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setChannels(['channel1', 'channel2'])
+        .setDocumentIDs(['doc1', 'doc2']);
+      
+      const config = new ReplicatorConfiguration([collectionConfig], target);
 
       // Configure authentication
       const basic = new BasicAuthenticator('test_user', 'test_password');
@@ -1576,14 +1937,6 @@ export class ReplicatorTests extends TestCase {
       const mockCertificate = "";
       config.setPinnedServerCertificate(mockCertificate);
 
-      // Configure collection
-      const collectionConfig = new CollectionConfig(
-        ['channel1', 'channel2'],
-        ['doc1', 'doc2']
-      );
-
-      config.addCollection(this.defaultCollection, collectionConfig);
-
       // Verify all getter methods return the values we set
       expect(config.getContinuous()).to.be.true;
 
@@ -1607,12 +1960,6 @@ export class ReplicatorTests extends TestCase {
       expect(config.getAllowReplicatingInBackground()).to.be.true;
       expect(config.getAutoPurgeEnabled()).to.be.false;
       expect(config.getAcceptParentDomainCookies()).to.be.true;
-
-      // Verify collection config
-      const retrievedCollectionConfig = config.getCollectionConfig(
-        this.defaultCollection
-      );
-      expect(retrievedCollectionConfig).to.not.be.null;
 
       // Now create a replicator with this configuration
       const replicator = await Replicator.create(config);
@@ -1657,7 +2004,7 @@ export class ReplicatorTests extends TestCase {
           'Successfully verified setter methods and replicator configuration',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testReplicationConfigSetterMethods',
         success: false,
@@ -1667,13 +2014,23 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
+  /**
+   * Test 23: Verify replicator configuration immutability (NEW API)
+   * 
+   * This test ensures that modifying the original configuration after creating
+   * a replicator doesn't affect the replicator's configuration.
+   */
   async testReplicatorConfigurationImmutability(): Promise<ITestResult> {
     try {
       const target = new URLEndpoint(this.SYNC_GATEWAY_URL);
-      const config = new ReplicatorConfiguration(target);
+      
+      // NEW API: Create CollectionConfiguration
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection);
+      const config = new ReplicatorConfiguration([collectionConfig], target);
 
       config.setContinuous(true);
-      config.addCollection(this.defaultCollection);
+      config.setAuthenticator(new BasicAuthenticator(this.TEST_USERNAME, this.TEST_PASSWORD));
+      
       const replicator = await Replicator.create(config);
 
       // Modify the original configuration
@@ -1691,7 +2048,7 @@ export class ReplicatorTests extends TestCase {
         message: 'Replicator configuration is immutable',
         data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testReplicatorConfigurationImmutability',
         success: false,
@@ -1701,22 +2058,29 @@ export class ReplicatorTests extends TestCase {
     }
   }
 
+  /**
+   * Test 24: Verify filter push performance (NEW API)
+   * 
+   * This test measures the performance of push replication with filters,
+   * ensuring it can handle a large number of documents efficiently.
+   */
   async testFilterPushPerformance(): Promise<ITestResult> {
     const docCount = 500;
     try {
       const docs = await this.createDocs(docCount);
 
-      const collConfig = new CollectionConfig(undefined, undefined);
-      collConfig.setPushFilter((doc, flags) => {
-        'replicatorFilter';
-        return Boolean(doc['number'] % 2);
-      });
+      // NEW API: Create CollectionConfiguration with push filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPushFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          return Boolean(doc['number'] % 2);
+        });
 
       const pushConfig = this.createConfig(
         ReplicatorType.PUSH,
         false,
         this.defaultCollection,
-        collConfig
+        collectionConfig
       );
 
       const startTime = Date.now();
@@ -1748,9 +2112,9 @@ export class ReplicatorTests extends TestCase {
         testName: 'testFilterPushPerformance',
         success: true,
         message: `Filter performance test completed successfully: docs ${docCount} - time ${duration} ms`,
-        data: null,
+        data: undefined,
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testFilterPushPerformance',
         success: false,
@@ -1761,8 +2125,10 @@ export class ReplicatorTests extends TestCase {
   }
 
   /**
-   *
-   * @returns {Promise<ITestResult>} A promise that resolves to an ITestResult object which contains the result of the verification.
+   * Test 25: Verify filter pull performance (NEW API)
+   * 
+   * This test measures the performance of pull replication with filters,
+   * ensuring it can handle a large number of documents efficiently.
    */
   async testFilterPullPerformance(): Promise<ITestResult> {
     const count = 100;
@@ -1799,18 +2165,19 @@ export class ReplicatorTests extends TestCase {
 
       await purgeDocuments(docIds);
 
-      const collConfig = new CollectionConfig(undefined, undefined);
-      collConfig.setPullFilter((doc, flags) => {
-        'replicatorFilter';
-        return doc['type'] === 'type1';
-      });
+      // NEW API: Create CollectionConfiguration with pull filter
+      const collectionConfig = new CollectionConfiguration(this.defaultCollection)
+        .setPullFilter((doc: any, flags: any) => {
+          'replicatorFilter';
+          return doc['type'] === 'type1';
+        });
 
       const startTime = Date.now();
       const replConfig = this.createConfig(
         ReplicatorType.PULL,
         false,
         this.defaultCollection,
-        collConfig
+        collectionConfig
       );
       await this.runReplication(replConfig);
       const duration = Date.now() - startTime;
@@ -1821,7 +2188,7 @@ export class ReplicatorTests extends TestCase {
         message: `Filter performance test completed successfully: docs ${count} - time ${duration} ms`,
         data: duration.toString(),
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         testName: 'testFilterPullPerformance',
         success: false,
@@ -1831,3 +2198,4 @@ export class ReplicatorTests extends TestCase {
     }
   }
 }
+
