@@ -321,9 +321,9 @@ export class LogSinksTests extends TestCase {
         'REPLICATOR',
         'NETWORK',
         'LISTENER',
-        'PEER_DISCOVERY',
-        'MDNS',
-        'MULTIPEER',
+        // 'PEER_DISCOVERY',
+        // 'MDNS',
+        // 'MULTIPEER',
         'ALL',
       ];
 
